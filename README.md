@@ -1,7 +1,7 @@
 # dnszoner
 
 A terminal editor for DNS zones across providers (AWS Route53, Cloudflare,
-Namecheap, GoDaddy, OVH and Hetzner), built for people with a lot of domains.
+Namecheap, GoDaddy, OVH, Hetzner and DigitalOcean), built for people with a lot of domains.
 
 Every zone and record is cached in SQLite, so the app opens instantly with
 everything loaded and refreshes from the providers in the background.
@@ -194,6 +194,11 @@ consumer_key = "…"
 name = "Hetzner"
 provider = "hetzner"
 api_token = "…"
+
+[[sources]]
+name = "DigitalOcean"
+provider = "digitalocean"
+api_token = "…"
 ```
 
 - **route53**: uses `profile`, or static keys, or the usual AWS environment
@@ -218,6 +223,10 @@ api_token = "…"
   Cloud API, which replaced the old DNS Console in 2026: its tokens don't
   work. Secondary zones are listed but read only. TXT values are quoted
   for Hetzner automatically.
+- **digitalocean**: a personal access token with read and write scopes (or
+  the `domain:read`, `domain:create`, `domain:update` and `domain:delete`
+  custom scopes). Changes are made record by record; the default TTL is
+  30 minutes.
 
 ## Keys
 

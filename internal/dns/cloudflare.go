@@ -219,60 +219,52 @@ func cfFromRecord(d store.RecordData, zone string) (cfRecord, error) {
 }
 
 func (c *Cloudflare) Apply(ctx context.Context, zone store.Zone, chs []Change) []error {
-	errs := make([]error, len(chs))
-	recs, err := c.records(ctx, zone)
-	if err != nil {
-		for i := range errs {
-			errs[i] = fmt.Errorf("fetching current records: %w", err)
-		}
-		return errs
-	}
-	used := map[string]bool{}
-	find := func(d store.RecordData) (cfRecord, bool) {
-		for _, r := range recs {
-			got := cfToRecord(r, zone.Name)
-			if !used[r.ID] && strings.EqualFold(got.Type, d.Type) && got.Host == d.Host && got.Value == d.Value {
-				return r, true
-			}
-		}
-		return cfRecord{}, false
-	}
-	base := "/zones/" + url.PathEscape(zone.Ref) + "/dns_records"
+	return applyByID(ctx, cfIDs{c, zone}, chs)
+}
 
-	for i, ch := range chs {
-		switch ch.Kind {
-		case store.PendingCreate:
-			if _, ok := find(ch.New); ok {
-				errs[i] = ErrExists
-				continue
-			}
-			body, err := cfFromRecord(ch.New, zone.Name)
-			if err == nil {
-				_, err = c.do(ctx, http.MethodPost, base, body, nil)
-			}
-			errs[i] = err
-		case store.PendingUpdate, store.PendingDelete:
-			old, ok := find(ch.Old)
-			if !ok {
-				errs[i] = ErrConflict
-				continue
-			}
-			used[old.ID] = true
-			if ch.Kind == store.PendingDelete {
-				_, errs[i] = c.do(ctx, http.MethodDelete, base+"/"+url.PathEscape(old.ID), nil, nil)
-				continue
-			}
-			body, err := cfFromRecord(ch.New, zone.Name)
-			if err == nil {
-				// PATCH leaves fields it isn't sent alone (proxied, comment, tags).
-				_, err = c.do(ctx, http.MethodPatch, base+"/"+url.PathEscape(old.ID), body, nil)
-			}
-			errs[i] = err
-		default:
-			errs[i] = fmt.Errorf("unknown change kind %q", ch.Kind)
-		}
+// cfIDs is a zone's records through the Cloudflare API.
+type cfIDs struct {
+	c    *Cloudflare
+	zone store.Zone
+}
+
+func (z cfIDs) base() string { return "/zones/" + url.PathEscape(z.zone.Ref) + "/dns_records" }
+
+func (z cfIDs) List(ctx context.Context) ([]idRecord, error) {
+	recs, err := z.c.records(ctx, z.zone)
+	if err != nil {
+		return nil, err
 	}
-	return errs
+	out := make([]idRecord, len(recs))
+	for i, r := range recs {
+		out[i] = idRecord{ID: r.ID, Data: cfToRecord(r, z.zone.Name)}
+	}
+	return out, nil
+}
+
+func (z cfIDs) Create(ctx context.Context, d store.RecordData) error {
+	body, err := cfFromRecord(d, z.zone.Name)
+	if err != nil {
+		return err
+	}
+	_, err = z.c.do(ctx, http.MethodPost, z.base(), body, nil)
+	return err
+}
+
+// Update uses PATCH, which leaves the fields it isn't sent alone (proxied,
+// comment, tags).
+func (z cfIDs) Update(ctx context.Context, id string, d store.RecordData) error {
+	body, err := cfFromRecord(d, z.zone.Name)
+	if err != nil {
+		return err
+	}
+	_, err = z.c.do(ctx, http.MethodPatch, z.base()+"/"+url.PathEscape(id), body, nil)
+	return err
+}
+
+func (z cfIDs) Delete(ctx context.Context, id string) error {
+	_, err := z.c.do(ctx, http.MethodDelete, z.base()+"/"+url.PathEscape(id), nil, nil)
+	return err
 }
 
 // Cloudflare uses a TTL of 1 for "automatic".

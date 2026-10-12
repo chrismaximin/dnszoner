@@ -55,6 +55,8 @@ func New(src config.Source) Provider {
 		return NewOVH(src)
 	case "hetzner":
 		return NewHetzner(src)
+	case "digitalocean":
+		return NewDigitalOcean(src)
 	default:
 		return NewRoute53(src)
 	}
