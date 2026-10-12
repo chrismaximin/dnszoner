@@ -21,6 +21,13 @@ to the type, host and TTL. The old value of each field stays visible while
 you edit. Enter saves and asks whether to apply now or save for later. ctrl+d
 deletes the record.
 
+The type is a selector: ← → cycle through A, AAAA, CNAME, MX, TXT, NS, SRV
+and CAA, and typing a letter jumps to the next type starting with it. As you
+type, the value is checked against the selected type: an A record must be an
+IPv4 address, a CNAME must be a hostname, an MX must be
+`<priority> <mail server>`, and so on. Surrounding spaces are trimmed. An
+invalid value can't be saved, and bulk edits are checked the same way.
+
 ![Editing a record](docs/edit.png)
 
 ## Bulk find and replace
@@ -94,6 +101,7 @@ List your provider accounts in `~/.config/dnszoner/config.json` (see
 |         | esc            | clear the search, then the marks, then quit |
 | Edit    | type           | replace the selected field              |
 |         | ← →            | edit the field in place                 |
+|         | ← → / letter   | on the type: change it / jump to it     |
 |         | tab            | next field                              |
 |         | enter          | save (then enter: apply now, l: later)  |
 |         | ctrl+d         | delete the record                       |

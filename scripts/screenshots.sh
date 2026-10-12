@@ -39,10 +39,8 @@ shot search
 
 keys Enter
 wait_for "Edit record"
-keys Tab Tab Tab
-lit "5m"
+lit "  203.0.113.50 "
 keys Tab
-lit "203.0.113.50"
 shot edit
 
 keys Escape Escape

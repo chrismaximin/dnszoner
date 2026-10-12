@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/chrismaximin/dnszoner/internal/records"
 	"github.com/chrismaximin/dnszoner/internal/store"
 )
 
@@ -152,6 +153,17 @@ func (b *bulkState) newValue(it bulkItem) string {
 	return strings.ReplaceAll(it.base.Value, find, repl)
 }
 
+// check returns the item's cleaned up new value, whether it changes, and
+// whether it is valid for the record type.
+func (b *bulkState) check(it bulkItem) (value string, changed bool, err error) {
+	v := b.newValue(it)
+	if strings.TrimSpace(v) == it.base.Value {
+		return it.base.Value, false, nil
+	}
+	v, err = records.Normalize(it.base.Type, v)
+	return v, v != it.base.Value, err
+}
+
 func (m *Model) updateBulk(msg tea.Msg) tea.Cmd {
 	b := m.bulk
 	k, isKey := msg.(tea.KeyMsg)
@@ -212,22 +224,28 @@ func (m *Model) updateBulk(msg tea.Msg) tea.Cmd {
 func (m *Model) reviewBulk() tea.Cmd {
 	b := m.bulk
 	b.changes = b.changes[:0]
+	invalid, firstErr := 0, ""
 	for _, it := range b.items {
-		v := b.newValue(it)
-		if v == it.base.Value {
+		v, changed, err := b.check(it)
+		if err != nil {
+			if invalid++; firstErr == "" {
+				firstErr = fmt.Sprintf("%s (%s): %v", recordName(it.zone, it.base), it.base.Type, err)
+			}
 			continue
 		}
-		if v == "" {
-			b.err = "The new value of " + recordName(it.zone, it.base) + " would be empty."
-			return nil
+		if !changed {
+			continue
 		}
 		d := it.base
 		d.Value = v
-		if err := validateRecord(d); err != nil {
-			b.err = recordName(it.zone, it.base) + ": " + err.Error()
-			return nil
-		}
 		b.changes = append(b.changes, store.Pending{ZoneID: it.zone.ID, Kind: store.PendingUpdate, Old: it.rec.RecordData, New: d})
+	}
+	if invalid > 0 {
+		b.err = fmt.Sprintf("%d new values are invalid, e.g. %s", invalid, firstErr)
+		if invalid == 1 {
+			b.err = "Invalid new value for " + firstErr
+		}
+		return nil
 	}
 	if len(b.changes) == 0 {
 		b.err = "Nothing changed."
@@ -316,10 +334,13 @@ func (m *Model) viewBulk() string {
 			break
 		}
 		name := pad(recordName(it.zone, it.base), nameW) + " " + pad(it.base.Type, colType) + " "
-		v := b.newValue(it)
-		if v == it.base.Value {
+		v, changed, err := b.check(it)
+		switch {
+		case err != nil:
+			s.WriteString("   " + name + stDeleted.Render(truncate(it.base.Value, valW)) + "  →  " + stErr.Render(truncate("✗ "+err.Error(), valW)) + "\n")
+		case !changed:
 			s.WriteString("   " + stMuted.Render(name+truncate(it.base.Value, valW)+"  (unchanged)") + "\n")
-		} else {
+		default:
 			s.WriteString("   " + name + stDeleted.Render(truncate(it.base.Value, valW)) + "  →  " + stOK.Render(truncate(v, valW)) + "\n")
 		}
 	}

@@ -22,6 +22,7 @@ var (
 	stOK        = lipgloss.NewStyle().Foreground(colOK)
 	stKey       = lipgloss.NewStyle().Bold(true)
 	stHighlight = lipgloss.NewStyle().Reverse(true)
+	stChoice    = lipgloss.NewStyle().Bold(true).Background(colAccent).Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E2E"})
 	stLabel     = lipgloss.NewStyle().Width(7).Foreground(colMuted)
 	stLabelOn   = lipgloss.NewStyle().Width(7).Foreground(colAccent).Bold(true)
 )

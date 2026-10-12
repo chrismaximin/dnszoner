@@ -1,18 +1,16 @@
 package ui
 
 import (
-	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
-	"time"
-	"unicode"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/libdns/libdns"
 
 	"github.com/chrismaximin/dnszoner/internal/dns"
+	"github.com/chrismaximin/dnszoner/internal/records"
 	"github.com/chrismaximin/dnszoner/internal/store"
 )
 
@@ -40,6 +38,7 @@ type editState struct {
 	fields [numFields]field
 	focus  int
 	err    string
+	types  []string // choices for the type selector
 
 	// Confirmation step, once the user asked to save or delete.
 	confirming bool
@@ -53,7 +52,7 @@ func (m *Model) openEdit(r store.Record) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	e := &editState{zone: z, rec: r}
+	e := &editState{zone: z, rec: r, types: records.Types}
 	start := r.RecordData
 	if p, ok := m.pendByKy[keyOf(r.ZoneID, r.RecordData)]; ok && p.Kind == store.PendingUpdate {
 		start = p.New // resume the change saved for later
@@ -68,10 +67,50 @@ func (m *Model) openEdit(r store.Record) tea.Cmd {
 		in.SetValue(starts[i])
 		e.fields[i] = field{old: olds[i], input: in}
 	}
+	for _, t := range []string{r.Type, start.Type} {
+		if !slices.Contains(e.types, t) {
+			e.types = append(slices.Clone(e.types), t)
+		}
+	}
 	m.edit = e
 	m.mode = modeEdit
 	m.setStatus("", false)
 	return m.focusField(fValue)
+}
+
+func (e *editState) typ() string { return e.fields[fType].input.Value() }
+
+// selectType moves the type selector by delta choices.
+func (e *editState) selectType(delta int) {
+	i := slices.Index(e.types, e.typ())
+	n := len(e.types)
+	e.fields[fType].input.SetValue(e.types[((i+delta)%n+n)%n])
+}
+
+// jumpType selects the next type starting with the letter, so "a" goes A,
+// AAAA, A...
+func (e *editState) jumpType(letter rune) {
+	l := strings.ToUpper(string(letter))
+	i := slices.Index(e.types, e.typ())
+	for step := 1; step <= len(e.types); step++ {
+		t := e.types[(i+step)%len(e.types)]
+		if strings.HasPrefix(t, l) {
+			e.fields[fType].input.SetValue(t)
+			return
+		}
+	}
+}
+
+// valueCheck cleans up and checks the value against the selected type.
+// touched is false while neither the value nor the type was changed, since
+// existing values are kept as they are.
+func (e *editState) valueCheck() (value string, err error, touched bool) {
+	raw := e.fields[fValue].input.Value()
+	if e.typ() == e.rec.Type && strings.TrimSpace(raw) == e.rec.Value {
+		return e.rec.Value, nil, false
+	}
+	v, err := records.Normalize(e.typ(), raw)
+	return v, err, true
 }
 
 func (m *Model) focusField(i int) tea.Cmd {
@@ -130,6 +169,21 @@ func (m *Model) updateEdit(msg tea.Msg) tea.Cmd {
 		case "enter", "ctrl+s":
 			return m.reviewEdit()
 		}
+	}
+
+	if e.focus == fType {
+		if isKey {
+			e.err = ""
+			switch k.Type {
+			case tea.KeyLeft:
+				e.selectType(-1)
+			case tea.KeyRight, tea.KeySpace:
+				e.selectType(1)
+			case tea.KeyRunes:
+				e.jumpType(k.Runes[0])
+			}
+		}
+		return nil
 	}
 
 	f := &e.fields[e.focus]
@@ -191,16 +245,14 @@ func (m *Model) parseFields() (store.RecordData, error) {
 	e := m.edit
 	val := func(i int) string { return strings.TrimSpace(e.fields[i].input.Value()) }
 
+	value, err, _ := e.valueCheck()
+	if err != nil {
+		return store.RecordData{}, fmt.Errorf("invalid %s value: %v", e.typ(), err)
+	}
 	d := store.RecordData{
-		Type:  strings.ToUpper(val(fType)),
+		Type:  e.typ(),
 		Host:  normalizeHost(val(fHost), e.zone.Name),
-		Value: val(fValue),
-	}
-	if d.Type == "" || strings.IndexFunc(d.Type, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) >= 0 {
-		return d, fmt.Errorf("invalid type %q", d.Type)
-	}
-	if d.Value == "" {
-		return d, errors.New("value cannot be empty")
+		Value: value,
 	}
 	ttl := e.rec.TTL
 	if t := val(fTTL); t != e.fields[fTTL].old {
@@ -210,23 +262,7 @@ func (m *Model) parseFields() (store.RecordData, error) {
 		}
 	}
 	d.TTL = ttl
-	// Unchanged TXT values etc. may not round-trip through the parser, so
-	// only validate what the user touched.
-	if d.Type != e.rec.Type || d.Value != e.rec.Value {
-		if err := validateRecord(d); err != nil {
-			return d, err
-		}
-	}
 	return d, nil
-}
-
-// validateRecord checks that the value parses for the record type.
-func validateRecord(d store.RecordData) error {
-	rr := libdns.RR{Name: d.Host, Type: d.Type, Data: d.Value, TTL: time.Duration(d.TTL) * time.Second}
-	if _, err := rr.Parse(); err != nil {
-		return fmt.Errorf("invalid %s value: %v", d.Type, err)
-	}
-	return nil
 }
 
 func (m *Model) parseTTL(s string) (int64, error) {
@@ -326,6 +362,8 @@ func (m *Model) viewEdit() string {
 			}
 			var input string
 			switch {
+			case i == fType && i == e.focus:
+				input = m.viewTypeSelector()
 			case i == e.focus && f.pristine:
 				input = stHighlight.Render(f.input.Value())
 			case i == e.focus:
@@ -344,7 +382,11 @@ func (m *Model) viewEdit() string {
 			} else {
 				old = stMuted.Render(old)
 			}
-			b.WriteString("           " + old + "\n\n")
+			b.WriteString("           " + old + "\n")
+			if i == fValue {
+				b.WriteString("           " + m.viewValueCheck())
+			}
+			b.WriteString("\n")
 		}
 		if e.err != "" {
 			b.WriteString(" " + stErr.Render(e.err) + "\n")
@@ -358,10 +400,47 @@ func (m *Model) viewEdit() string {
 	b.WriteString(m.statusLine() + "\n")
 	if e.confirming {
 		b.WriteString(helpLine("enter", "apply now", "l", "save for later", "esc", "keep editing"))
+	} else if e.focus == fType {
+		b.WriteString(helpLine("←→", "change type", "letter", "jump to type", "tab", "next field", "enter", "save", "ctrl+d", "delete", "esc", "back"))
 	} else {
 		b.WriteString(helpLine("type", "replace", "←→", "edit in place", "tab", "next field", "enter", "save", "ctrl+d", "delete", "esc", "back"))
 	}
 	return b.String()
+}
+
+// viewTypeSelector lists the types with the selected one highlighted.
+func (m *Model) viewTypeSelector() string {
+	e := m.edit
+	parts := make([]string, len(e.types))
+	for i, t := range e.types {
+		if t == e.typ() {
+			parts[i] = stChoice.Render(" " + t + " ")
+		} else {
+			parts[i] = stMuted.Render(" " + t + " ")
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// viewValueCheck says whether the value is valid for the selected type, and
+// how it will be saved when that differs from what was typed.
+func (m *Model) viewValueCheck() string {
+	e := m.edit
+	v, err, touched := e.valueCheck()
+	switch {
+	case !touched:
+		return ""
+	case err != nil:
+		s := "✗ " + err.Error()
+		if ex, ok := records.Example[e.typ()]; ok && !strings.Contains(s, ex) {
+			s += ", e.g. " + ex
+		}
+		return stErr.Render(truncate(s, max(10, m.width-12)))
+	case v != e.fields[fValue].input.Value():
+		return stOK.Render("✓ valid "+e.typ()) + stMuted.Render(", saved as "+truncate(v, max(10, m.width-40)))
+	default:
+		return stOK.Render("✓ valid " + e.typ())
+	}
 }
 
 func (m *Model) viewConfirm() string {
