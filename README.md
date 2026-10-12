@@ -3,7 +3,7 @@
 ![dnszoner in 28 seconds](docs/demo.gif)
 
 ```sh
-GOPRIVATE=github.com/chrismaximin go install github.com/chrismaximin/dnszoner@latest
+go install github.com/chrismaximin/dnszoner@latest
 dnszoner --fake   # try it with made-up data, no account needed
 ```
 
@@ -91,8 +91,7 @@ rest still apply.
 ## Install
 
 The command at the top needs Go 1.21 or later, which fetches the exact Go
-version this project uses; no C compiler is needed. `GOPRIVATE` is needed
-while the repository is private.
+version this project uses; no C compiler is needed.
 
 From a clone of the repository:
 
