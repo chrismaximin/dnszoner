@@ -3,7 +3,8 @@
 ![dnszoner in 28 seconds](docs/demo.gif)
 
 ```sh
-brew install chrismaximin/tap/dnszoner   # or: go install github.com/chrismaximin/dnszoner@latest
+brew install chrismaximin/tap/dnszoner              # macOS
+go install github.com/chrismaximin/dnszoner@latest  # Linux
 dnszoner --fake   # try it with made-up data, no account needed
 ```
 
