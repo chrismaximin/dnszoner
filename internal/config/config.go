@@ -14,7 +14,7 @@ import (
 )
 
 // Providers are the supported provider kinds.
-var Providers = []string{"route53", "cloudflare", "namecheap", "godaddy", "ovh", "hetzner", "digitalocean", "googlecloud"}
+var Providers = []string{"route53", "cloudflare", "namecheap", "godaddy", "ovh", "hetzner", "digitalocean", "googlecloud", "azure"}
 
 // ProviderLabel is how each provider is shown in the UI.
 var ProviderLabel = map[string]string{
@@ -26,6 +26,7 @@ var ProviderLabel = map[string]string{
 	"hetzner":      "Hetzner",
 	"digitalocean": "DigitalOcean",
 	"googlecloud":  "Google Cloud DNS",
+	"azure":        "Azure DNS",
 }
 
 // Source is one provider account. Credentials not set here fall back to the
@@ -56,6 +57,12 @@ type Source struct {
 	// googlecloud
 	Project         string `toml:"project,omitempty"`
 	CredentialsFile string `toml:"credentials_file,omitempty"` // empty: application default credentials
+
+	// azure
+	SubscriptionID string `toml:"subscription_id,omitempty"`
+	TenantID       string `toml:"tenant_id,omitempty"` // with client_id and client_secret, a service principal
+	ClientID       string `toml:"client_id,omitempty"`
+	ClientSecret   string `toml:"client_secret,omitempty"`
 
 	// ovh
 	Endpoint          string `toml:"endpoint,omitempty"` // ovh-eu (default), ovh-ca, ovh-us...
@@ -140,6 +147,13 @@ func (s Source) Validate() error {
 		if s.Project == "" {
 			return errors.New("the GCP project ID is required")
 		}
+	case "azure":
+		if s.SubscriptionID == "" {
+			return errors.New("the subscription ID is required")
+		}
+		if n := btoi(s.TenantID != "") + btoi(s.ClientID != "") + btoi(s.ClientSecret != ""); n != 0 && n != 3 {
+			return errors.New("set the tenant ID, client ID and client secret together, or none of them")
+		}
 	case "ovh":
 		if s.ApplicationKey == "" || s.ApplicationSecret == "" || s.ConsumerKey == "" {
 			return errors.New("the application key, application secret and consumer key are required")
@@ -148,6 +162,13 @@ func (s Source) Validate() error {
 		return fmt.Errorf("unknown provider %q (%s)", s.Provider, strings.Join(Providers, ", "))
 	}
 	return nil
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 const header = `# dnszoner accounts. Edit here or from the app (ctrl+o).

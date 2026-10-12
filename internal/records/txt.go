@@ -5,20 +5,28 @@ import (
 	"unicode/utf8"
 )
 
+// TXTChunks splits a TXT value into strings of at most 255 bytes, without
+// splitting a character.
+func TXTChunks(v string) []string {
+	var out []string
+	for len(v) > 0 || len(out) == 0 {
+		n := min(len(v), 255)
+		for n < len(v) && n > 0 && !utf8.RuneStart(v[n]) {
+			n--
+		}
+		out = append(out, v[:n])
+		v = v[n:]
+	}
+	return out
+}
+
 // QuoteTXT turns a TXT value into zone file form: quoted strings of at most
 // 255 bytes, with quotes and backslashes escaped.
 func QuoteTXT(v string) string {
-	var parts []string
-	for len(v) > 0 || len(parts) == 0 {
-		n := min(len(v), 255)
-		for n < len(v) && n > 0 && !utf8.RuneStart(v[n]) {
-			n-- // don't split a character
-		}
-		chunk := v[:n]
-		v = v[n:]
-		chunk = strings.ReplaceAll(chunk, `\`, `\\`)
-		chunk = strings.ReplaceAll(chunk, `"`, `\"`)
-		parts = append(parts, `"`+chunk+`"`)
+	parts := TXTChunks(v)
+	for i, c := range parts {
+		c = strings.ReplaceAll(c, `\`, `\\`)
+		parts[i] = `"` + strings.ReplaceAll(c, `"`, `\"`) + `"`
 	}
 	return strings.Join(parts, " ")
 }

@@ -1,7 +1,8 @@
 # dnszoner
 
 A terminal editor for DNS zones across providers (AWS Route53, Cloudflare,
-Namecheap, GoDaddy, OVH, Hetzner, DigitalOcean and Google Cloud DNS), built for people with a lot of domains.
+Namecheap, GoDaddy, OVH, Hetzner, DigitalOcean, Google Cloud DNS and
+Azure DNS), built for people with a lot of domains.
 
 Every zone and record is cached in SQLite, so the app opens instantly with
 everything loaded and refreshes from the providers in the background.
@@ -205,6 +206,12 @@ name = "GCP prod"
 provider = "googlecloud"
 project = "my-project"
 credentials_file = "~/keys/dns-admin.json"   # optional
+
+[[sources]]
+name = "Azure"
+provider = "azure"
+subscription_id = "…"
+# tenant_id, client_id and client_secret for a service principal (optional)
 ```
 
 - **route53**: uses `profile`, or static keys, or the usual AWS environment
@@ -240,6 +247,13 @@ credentials_file = "~/keys/dns-admin.json"   # optional
   and Cloud DNS refuses them if a record set changed since it was read.
   Private zones are marked as such; record sets with a routing policy
   (weighted, geo) are left out.
+- **azure**: one account per subscription, for public Azure DNS zones. Uses
+  a service principal with the DNS Zone Contributor role when `tenant_id`,
+  `client_id` and `client_secret` are set, else `az login`, the `AZURE_*`
+  environment variables or a managed identity. Record sets are only
+  replaced if they haven't changed since they were read (ETags); metadata
+  is kept. Alias record sets (pointing at Azure resources) and the SOA are
+  left out.
 
 ## Keys
 

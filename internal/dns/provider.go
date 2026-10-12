@@ -59,6 +59,8 @@ func New(src config.Source) Provider {
 		return NewDigitalOcean(src)
 	case "googlecloud":
 		return NewGoogleCloud(src)
+	case "azure":
+		return NewAzure(src)
 	default:
 		return NewRoute53(src)
 	}

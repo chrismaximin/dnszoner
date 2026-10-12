@@ -55,6 +55,16 @@ var acctFields = map[string][]acctField{
 		{"Credentials file", "Optional: path to a service account JSON key with the DNS Administrator role. Empty uses your application default credentials (gcloud auth application-default login)", false,
 			func(s *config.Source) *string { return &s.CredentialsFile }},
 	},
+	"azure": {
+		{"Subscription ID", "The Azure subscription holding the DNS zones (public zones); add one account per subscription", false,
+			func(s *config.Source) *string { return &s.SubscriptionID }},
+		{"Tenant ID", "Optional, for a service principal with the DNS Zone Contributor role. Leave the three empty to use az login, environment variables or a managed identity", false,
+			func(s *config.Source) *string { return &s.TenantID }},
+		{"Client ID", "The service principal's application (client) ID", false,
+			func(s *config.Source) *string { return &s.ClientID }},
+		{"Client secret", "The service principal's secret", true,
+			func(s *config.Source) *string { return &s.ClientSecret }},
+	},
 	"godaddy": {
 		{"API key", "A Production key from developer.godaddy.com/keys. GoDaddy only opens its API to some accounts (by number of domains, or with a Discount Domain Club plan): an ACCESS_DENIED error means yours isn't one", false,
 			func(s *config.Source) *string { return &s.APIKey }},
@@ -495,6 +505,11 @@ func accountDetails(s config.Source) string {
 		}
 	case "cloudflare", "hetzner", "digitalocean":
 		parts = append(parts, "token "+maskKey(s.APIToken))
+	case "azure":
+		parts = append(parts, "subscription "+maskKey(s.SubscriptionID))
+		if s.ClientID != "" {
+			parts = append(parts, "service principal")
+		}
 	case "googlecloud":
 		parts = append(parts, "project "+s.Project)
 		if s.CredentialsFile != "" {
@@ -575,7 +590,7 @@ func (m *Model) viewAccounts() string {
 	b.WriteString(stTitle.Render(" Accounts") + "  " + stMuted.Render(where) + "\n\n")
 
 	if len(srcs) == 0 {
-		b.WriteString("  No accounts yet. Press " + stKey.Render("a") + " to add your AWS Route53, Cloudflare, Namecheap, GoDaddy, OVH, Hetzner, DigitalOcean or Google Cloud DNS account.\n")
+		b.WriteString("  No accounts yet. Press " + stKey.Render("a") + " to add your AWS Route53, Cloudflare, Namecheap, GoDaddy, OVH, Hetzner, DigitalOcean, Google Cloud DNS or Azure DNS account.\n")
 	} else {
 		nameW, provW, detW := 20, 12, max(16, min(30, m.width-70))
 		b.WriteString(stHeader.Render("   "+pad("Name", nameW)+" "+pad("Provider", provW)+" "+pad("Details", detW)+" Cache") + "\n")
