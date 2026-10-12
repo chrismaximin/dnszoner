@@ -93,6 +93,28 @@ make screenshots   # regenerates the images in docs/
 make clean         # removes the built binary
 ```
 
+## Change log
+
+Every change sent to a provider is appended to a log, one JSON object per
+line, with the time, account, domain, record before and after, and whether
+it was applied or failed (with the error):
+
+```json
+{"time":"2026-10-12T16:04:25Z","level":"INFO","msg":"change applied","source":"AWS prod","zone":"applepie.io","name":"developers.applepie.io","kind":"update","old":{"type":"A","host":"developers","value":"1.2.3.4","ttl":300},"new":{"type":"A","host":"developers","value":"9.9.9.9","ttl":300}}
+```
+
+The log lives in `~/.local/state/dnszoner/changes.log` on Linux (or under
+`$XDG_STATE_HOME`) and `~/Library/Logs/dnszoner/changes.log` on macOS;
+`--log` picks another file. It is readable only by you. With `--fake`,
+changes go to `fake-changes.log` next to it instead. Changes saved for later
+are logged when they are applied.
+
+```sh
+tail -f ~/.local/state/dnszoner/changes.log | jq .                    # follow
+jq -c 'select(.level == "ERROR")' ~/.local/state/dnszoner/changes.log  # failures
+jq -c 'select(.zone == "example.com")' ~/.local/state/dnszoner/changes.log
+```
+
 ## Accounts
 
 Press ctrl+o to manage your provider accounts; on first run the app opens
@@ -167,6 +189,7 @@ client_ip = "203.0.113.7"
 ```
 --config PATH   config file (default: the user config dir)
 --db PATH       cache database (default: the user cache dir)
+--log PATH      change log (default: the user state or logs dir)
 --no-sync       don't refresh from the providers on startup
 --fake          use made-up sources, domains and records
 --fake-reset    with --fake, regenerate the fake data

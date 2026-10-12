@@ -127,6 +127,7 @@ func (m *Model) handleApplyDone(msg applyDoneMsg) tea.Cmd {
 	m.lastJob = msg.job
 	st := m.opts.Store
 	for i, p := range msg.job.changes {
+		m.opts.ChangeLog.Change(msg.job.zone.Source, msg.job.zone.Name, p.Kind, p.Old, p.New, msg.errs[i])
 		if err := msg.errs[i]; err != nil {
 			a.fail(p, m, err.Error())
 			continue

@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/chrismaximin/dnszoner/internal/changelog"
 	"github.com/chrismaximin/dnszoner/internal/config"
 	"github.com/chrismaximin/dnszoner/internal/dns"
 	"github.com/chrismaximin/dnszoner/internal/fake"
@@ -30,6 +31,7 @@ func run() error {
 		useFake    = flag.Bool("fake", false, "use a separate database filled with made-up sources, domains and records")
 		fakeReset  = flag.Bool("fake-reset", false, "with --fake, regenerate the fake data")
 		noSync     = flag.Bool("no-sync", false, "don't refresh from providers on startup (ctrl+r syncs)")
+		logPath    = flag.String("log", "", "file every record change is logged to (default: "+changelog.DefaultPath(false)+")")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: dnszoner [flags]\n\n")
@@ -54,6 +56,15 @@ func run() error {
 		return err
 	}
 	defer st.Close()
+
+	if *logPath == "" {
+		*logPath = changelog.DefaultPath(*useFake)
+	}
+	changes, err := changelog.Open(*logPath)
+	if err != nil {
+		return fmt.Errorf("opening the change log: %w", err)
+	}
+	defer changes.Close()
 
 	providers := map[string]dns.Provider{}
 	syncOnStart := !*noSync
@@ -89,7 +100,7 @@ func run() error {
 
 	m := ui.New(ui.Options{
 		Store: st, Providers: providers, SyncOnStart: syncOnStart, Fake: *useFake,
-		Config: cfg, ConfigPath: *configPath,
+		Config: cfg, ConfigPath: *configPath, ChangeLog: changes,
 	})
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err

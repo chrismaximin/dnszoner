@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/chrismaximin/dnszoner/internal/changelog"
 	"github.com/chrismaximin/dnszoner/internal/config"
 	"github.com/chrismaximin/dnszoner/internal/dns"
 	"github.com/chrismaximin/dnszoner/internal/search"
@@ -35,6 +36,8 @@ type Options struct {
 
 	Config     *config.Config
 	ConfigPath string
+
+	ChangeLog *changelog.Log // every change sent to a provider
 }
 
 type pendingKey struct {
