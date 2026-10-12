@@ -44,10 +44,18 @@ type Provider interface {
 
 // New returns the provider for a configured source.
 func New(src config.Source) Provider {
-	if src.Provider == "namecheap" {
+	switch src.Provider {
+	case "cloudflare":
+		return NewCloudflare(src)
+	case "namecheap":
 		return NewNamecheap(src)
+	case "godaddy":
+		return NewGoDaddy(src)
+	case "ovh":
+		return NewOVH(src)
+	default:
+		return NewRoute53(src)
 	}
-	return NewRoute53(src)
 }
 
 // recordAPI is the subset of libdns used to read and change records.
@@ -94,6 +102,51 @@ func sameSet(a, b store.RecordData) bool {
 // deletes the sets left empty. It returns one error per change: a change whose
 // old record is gone or changed fails with ErrConflict and is left out.
 func applyLibdns(ctx context.Context, api recordAPI, zone string, chs []Change) []error {
+	return applySets(ctx, libdnsSets{api, zone}, chs)
+}
+
+// setAPI reads and writes a zone's records as sets of the same host and
+// type.
+type setAPI interface {
+	Get(ctx context.Context) ([]store.RecordData, error)
+	// Set replaces each (host, type) set the records belong to.
+	Set(ctx context.Context, recs []store.RecordData) error
+	// Delete removes whole sets: every set the records belong to.
+	Delete(ctx context.Context, recs []store.RecordData) error
+}
+
+// libdnsSets adapts a libdns provider to setAPI.
+type libdnsSets struct {
+	api  recordAPI
+	zone string
+}
+
+func (l libdnsSets) Get(ctx context.Context) ([]store.RecordData, error) {
+	recs, err := l.api.GetRecords(ctx, fqdn(l.zone))
+	return fromLibdns(recs), err
+}
+
+func (l libdnsSets) Set(ctx context.Context, recs []store.RecordData) error {
+	_, err := l.api.SetRecords(ctx, fqdn(l.zone), toLibdnsAll(recs))
+	return err
+}
+
+func (l libdnsSets) Delete(ctx context.Context, recs []store.RecordData) error {
+	_, err := l.api.DeleteRecords(ctx, fqdn(l.zone), toLibdnsAll(recs))
+	return err
+}
+
+func toLibdnsAll(recs []store.RecordData) []libdns.Record {
+	out := make([]libdns.Record, len(recs))
+	for i, r := range recs {
+		out[i] = toLibdns(r)
+	}
+	return out
+}
+
+// applySets applies a zone's changes through a set based API; see
+// applyLibdns.
+func applySets(ctx context.Context, api setAPI, chs []Change) []error {
 	errs := make([]error, len(chs))
 	failAll := func(err error) []error {
 		for i := range errs {
@@ -104,14 +157,14 @@ func applyLibdns(ctx context.Context, api recordAPI, zone string, chs []Change) 
 		return errs
 	}
 
-	recs, err := api.GetRecords(ctx, fqdn(zone))
+	current, err := api.Get(ctx)
 	if err != nil {
 		return failAll(fmt.Errorf("fetching current records: %w", err))
 	}
 	type setKey struct{ host, typ string }
 	keyOf := func(d store.RecordData) setKey { return setKey{d.Host, strings.ToUpper(d.Type)} }
 	orig := map[setKey][]store.RecordData{}
-	for _, r := range fromLibdns(recs) {
+	for _, r := range current {
 		orig[keyOf(r)] = append(orig[keyOf(r)], r)
 	}
 
@@ -169,29 +222,25 @@ func applyLibdns(ctx context.Context, api recordAPI, zone string, chs []Change) 
 		}
 	}
 
-	var set, del []libdns.Record
+	var set, del []store.RecordData
 	emptied := map[setKey]bool{}
 	for _, k := range touched {
 		if len(sets[k]) == 0 {
 			emptied[k] = true
-			for _, r := range orig[k] {
-				del = append(del, toLibdns(r))
-			}
+			del = append(del, orig[k]...)
 			continue
 		}
-		for _, r := range sets[k] {
-			set = append(set, toLibdns(r))
-		}
+		set = append(set, sets[k]...)
 	}
 	// Writing before deleting means a renamed record exists under its new
 	// name before the old one goes away.
 	if len(set) > 0 {
-		if _, err := api.SetRecords(ctx, fqdn(zone), set); err != nil {
+		if err := api.Set(ctx, set); err != nil {
 			return failAll(err)
 		}
 	}
 	if len(del) > 0 {
-		if _, err := api.DeleteRecords(ctx, fqdn(zone), del); err != nil {
+		if err := api.Delete(ctx, del); err != nil {
 			for i, ch := range chs {
 				if errs[i] != nil || !emptied[keyOf(ch.Old)] {
 					continue

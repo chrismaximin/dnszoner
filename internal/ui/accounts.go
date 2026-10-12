@@ -37,6 +37,26 @@ var acctFields = map[string][]acctField{
 		{"Session token", "Only for temporary credentials", true,
 			func(s *config.Source) *string { return &s.SessionToken }},
 	},
+	"cloudflare": {
+		{"API token", "Create one under My Profile › API Tokens, with Zone › Zone › Read and Zone › DNS › Edit for the zones to manage", true,
+			func(s *config.Source) *string { return &s.APIToken }},
+	},
+	"godaddy": {
+		{"API key", "A Production key from developer.godaddy.com/keys. GoDaddy only opens its API to some accounts (by number of domains, or with a Discount Domain Club plan): an ACCESS_DENIED error means yours isn't one", false,
+			func(s *config.Source) *string { return &s.APIKey }},
+		{"API secret", "Shown once, when the key is created", true,
+			func(s *config.Source) *string { return &s.APISecret }},
+	},
+	"ovh": {
+		{"Endpoint", "ovh-eu (the default when empty), ovh-ca or ovh-us", false,
+			func(s *config.Source) *string { return &s.Endpoint }},
+		{"Application key", "Create the keys at eu.api.ovh.com/createToken (or ca. / us.), with GET, POST, PUT and DELETE on /domain/*", false,
+			func(s *config.Source) *string { return &s.ApplicationKey }},
+		{"Application secret", "From the same page", true,
+			func(s *config.Source) *string { return &s.ApplicationSecret }},
+		{"Consumer key", "From the same page", true,
+			func(s *config.Source) *string { return &s.ConsumerKey }},
+	},
 	"namecheap": {
 		{"API user", "Your Namecheap username; enable API access under Profile › Tools › API Access", false,
 			func(s *config.Source) *string { return &s.APIUser }},
@@ -459,6 +479,16 @@ func accountDetails(s config.Source) string {
 		if strings.Contains(s.APIEndpoint, "sandbox") {
 			parts = append(parts, "sandbox")
 		}
+	case "cloudflare":
+		parts = append(parts, "token "+maskKey(s.APIToken))
+	case "godaddy":
+		parts = append(parts, "key "+maskKey(s.APIKey))
+	case "ovh":
+		ep := s.Endpoint
+		if ep == "" {
+			ep = "ovh-eu"
+		}
+		parts = append(parts, ep+", key "+maskKey(s.ApplicationKey))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -526,7 +556,7 @@ func (m *Model) viewAccounts() string {
 	b.WriteString(stTitle.Render(" Accounts") + "  " + stMuted.Render(where) + "\n\n")
 
 	if len(srcs) == 0 {
-		b.WriteString("  No accounts yet. Press " + stKey.Render("a") + " to add your AWS Route53 or Namecheap account.\n")
+		b.WriteString("  No accounts yet. Press " + stKey.Render("a") + " to add your AWS Route53, Cloudflare, Namecheap, GoDaddy or OVH account.\n")
 	} else {
 		nameW, provW, detW := 20, 12, max(16, min(30, m.width-70))
 		b.WriteString(stHeader.Render("   "+pad("Name", nameW)+" "+pad("Provider", provW)+" "+pad("Details", detW)+" Cache") + "\n")

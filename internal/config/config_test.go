@@ -12,6 +12,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	in := &Config{Sources: []Source{
 		{Name: "AWS prod", Provider: "route53", Profile: "prod"},
 		{Name: "Namecheap", Provider: "namecheap", APIUser: "me", APIKey: "secret"},
+		{Name: "CF", Provider: "cloudflare", APIToken: "t"},
+		{Name: "GD", Provider: "godaddy", APIKey: "k", APISecret: "s"},
+		{Name: "OVH", Provider: "ovh", Endpoint: "ovh-ca", ApplicationKey: "a", ApplicationSecret: "b", ConsumerKey: "c"},
 	}}
 	if err := Save(path, in); err != nil {
 		t.Fatal(err)
@@ -27,8 +30,13 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Sources) != 2 || out.Sources[0] != in.Sources[0] || out.Sources[1] != in.Sources[1] {
-		t.Errorf("round trip: got %+v", out.Sources)
+	if len(out.Sources) != len(in.Sources) {
+		t.Fatalf("round trip: got %+v", out.Sources)
+	}
+	for i := range in.Sources {
+		if out.Sources[i] != in.Sources[i] {
+			t.Errorf("round trip: got %+v, want %+v", out.Sources[i], in.Sources[i])
+		}
 	}
 	b, _ := os.ReadFile(path)
 	if !strings.Contains(string(b), "[[sources]]") || strings.Contains(string(b), "access_key_id") {
@@ -42,10 +50,13 @@ func TestLoad(t *testing.T) {
 		t.Fatalf("missing file: %+v, %v", c, err)
 	}
 	cases := map[string]string{
-		"unknown provider": "[[sources]]\nname = \"x\"\nprovider = \"godaddy\"\n",
+		"unknown provider": "[[sources]]\nname = \"x\"\nprovider = \"dyndns\"\n",
 		"duplicate":        "[[sources]]\nname = \"x\"\nprovider = \"route53\"\n[[sources]]\nname = \"x\"\nprovider = \"route53\"\n",
 		"typo":             "[[sources]]\nname = \"x\"\nprovider = \"route53\"\nprofil = \"p\"\n",
 		"namecheap keys":   "[[sources]]\nname = \"x\"\nprovider = \"namecheap\"\napi_user = \"me\"\n",
+		"cloudflare token": "[[sources]]\nname = \"x\"\nprovider = \"cloudflare\"\n",
+		"godaddy secret":   "[[sources]]\nname = \"x\"\nprovider = \"godaddy\"\napi_key = \"k\"\n",
+		"ovh consumer key": "[[sources]]\nname = \"x\"\nprovider = \"ovh\"\napplication_key = \"a\"\napplication_secret = \"b\"\n",
 	}
 	for name, body := range cases {
 		path := filepath.Join(dir, name+".toml")

@@ -1,7 +1,7 @@
 # dnszoner
 
-A terminal editor for DNS zones across providers (AWS Route53 and Namecheap),
-built for people with a lot of domains.
+A terminal editor for DNS zones across providers (AWS Route53, Cloudflare,
+Namecheap, GoDaddy and OVH), built for people with a lot of domains.
 
 Every zone and record is cached in SQLite, so the app opens instantly with
 everything loaded and refreshes from the providers in the background.
@@ -170,6 +170,25 @@ provider = "namecheap"
 api_user = "you"
 api_key = "…"
 client_ip = "203.0.113.7"
+
+[[sources]]
+name = "Cloudflare"
+provider = "cloudflare"
+api_token = "…"
+
+[[sources]]
+name = "GoDaddy"
+provider = "godaddy"
+api_key = "…"
+api_secret = "…"
+
+[[sources]]
+name = "OVH"
+provider = "ovh"
+endpoint = "ovh-eu"
+application_key = "…"
+application_secret = "…"
+consumer_key = "…"
 ```
 
 - **route53**: uses `profile`, or static keys, or the usual AWS environment
@@ -178,6 +197,17 @@ client_ip = "203.0.113.7"
   `client_ip` is discovered automatically when omitted; set `api_endpoint` to
   use the sandbox. Calls are rate limited to stay under Namecheap's API
   limits.
+- **cloudflare**: an API token with Zone › Zone › Read and Zone › DNS › Edit.
+  Changes are made record by record, and only send the record's own fields,
+  so proxying, comments and tags are kept. New records aren't proxied.
+- **godaddy**: a Production API key and secret. GoDaddy only opens its API
+  to some accounts (by number of domains, or with a Discount Domain Club
+  plan); TTLs must be at least 600 seconds, and SRV records can be read but
+  not changed yet. Calls are rate limited to 60 a minute.
+- **ovh**: an application key, application secret and consumer key with
+  GET, POST, PUT and DELETE rights on `/domain/*` (create them at
+  `eu.api.ovh.com/createToken`, or the `ca.` / `us.` equivalents, and set
+  `endpoint` to match). The zone is refreshed after each change.
 
 ## Keys
 

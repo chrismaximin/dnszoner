@@ -8,21 +8,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 // Providers are the supported provider kinds.
-var Providers = []string{"route53", "namecheap"}
+var Providers = []string{"route53", "cloudflare", "namecheap", "godaddy", "ovh"}
 
 // ProviderLabel is how each provider is shown in the UI.
-var ProviderLabel = map[string]string{"route53": "AWS Route53", "namecheap": "Namecheap"}
+var ProviderLabel = map[string]string{
+	"route53":    "AWS Route53",
+	"cloudflare": "Cloudflare",
+	"namecheap":  "Namecheap",
+	"godaddy":    "GoDaddy",
+	"ovh":        "OVH",
+}
 
 // Source is one provider account. Credentials not set here fall back to the
 // provider's usual environment variables / profiles.
 type Source struct {
 	Name     string `toml:"name"`
-	Provider string `toml:"provider"` // "route53" or "namecheap"
+	Provider string `toml:"provider"` // one of Providers
 
 	// route53
 	Profile         string `toml:"profile,omitempty"`
@@ -31,11 +38,23 @@ type Source struct {
 	SecretAccessKey string `toml:"secret_access_key,omitempty"`
 	SessionToken    string `toml:"session_token,omitempty"`
 
-	// namecheap
+	// cloudflare
+	APIToken string `toml:"api_token,omitempty"`
+
+	// namecheap (and godaddy's api_key)
 	APIUser     string `toml:"api_user,omitempty"`
 	APIKey      string `toml:"api_key,omitempty"`
 	ClientIP    string `toml:"client_ip,omitempty"`
 	APIEndpoint string `toml:"api_endpoint,omitempty"`
+
+	// godaddy
+	APISecret string `toml:"api_secret,omitempty"`
+
+	// ovh
+	Endpoint          string `toml:"endpoint,omitempty"` // ovh-eu (default), ovh-ca, ovh-us...
+	ApplicationKey    string `toml:"application_key,omitempty"`
+	ApplicationSecret string `toml:"application_secret,omitempty"`
+	ConsumerKey       string `toml:"consumer_key,omitempty"`
 }
 
 type Config struct {
@@ -98,12 +117,24 @@ func (s Source) Validate() error {
 		if (s.AccessKeyID == "") != (s.SecretAccessKey == "") {
 			return errors.New("set both the access key ID and the secret access key, or neither")
 		}
+	case "cloudflare":
+		if s.APIToken == "" {
+			return errors.New("the API token is required")
+		}
 	case "namecheap":
 		if s.APIUser == "" || s.APIKey == "" {
 			return errors.New("the API user and API key are required")
 		}
+	case "godaddy":
+		if s.APIKey == "" || s.APISecret == "" {
+			return errors.New("the API key and API secret are required")
+		}
+	case "ovh":
+		if s.ApplicationKey == "" || s.ApplicationSecret == "" || s.ConsumerKey == "" {
+			return errors.New("the application key, application secret and consumer key are required")
+		}
 	default:
-		return fmt.Errorf("unknown provider %q (route53 or namecheap)", s.Provider)
+		return fmt.Errorf("unknown provider %q (%s)", s.Provider, strings.Join(Providers, ", "))
 	}
 	return nil
 }
