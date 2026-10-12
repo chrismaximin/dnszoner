@@ -150,7 +150,7 @@ func (b *bulkState) newValue(it bulkItem) string {
 	if find == "" {
 		return repl
 	}
-	return strings.ReplaceAll(it.base.Value, find, repl)
+	return records.Replace(it.base.Value, find, repl)
 }
 
 // check returns the item's cleaned up new value, whether it changes, and
@@ -295,7 +295,25 @@ func (m *Model) viewBulk() string {
 	for _, it := range b.items {
 		zones[it.zone.ID] = true
 	}
-	s.WriteString(stTitle.Render(" Bulk edit") + "  " + stZone.Render(fmt.Sprintf("%d records in %d domains", len(b.items), len(zones))) + "\n\n")
+	// Changes first, so they aren't lost among records the find doesn't match.
+	order := make([]bulkItem, 0, len(b.items))
+	changing := 0
+	for _, it := range b.items {
+		if _, changed, err := b.check(it); changed || err != nil {
+			order = append(order, it)
+			changing++
+		}
+	}
+	for _, it := range b.items {
+		if _, changed, err := b.check(it); !changed && err == nil {
+			order = append(order, it)
+		}
+	}
+	title := fmt.Sprintf("%d records in %d domains", len(b.items), len(zones))
+	if changing > 0 && changing < len(b.items) {
+		title += stMuted.Render(fmt.Sprintf(" · %d change, %d unchanged", changing, len(b.items)-changing))
+	}
+	s.WriteString(stTitle.Render(" Bulk edit") + "  " + stZone.Render(title) + "\n\n")
 
 	if b.confirming {
 		s.WriteString(" " + stZone.Render(fmt.Sprintf("Save %d changes?", len(b.changes))) + "\n\n")
@@ -328,7 +346,7 @@ func (m *Model) viewBulk() string {
 	room := max(1, m.height-used-4)
 	nameW := min(40, max(16, m.width/3))
 	valW := max(8, (m.width-nameW-colType-12)/2)
-	for i, it := range b.items {
+	for i, it := range order {
 		if i == room-1 && len(b.items) > room {
 			s.WriteString(stMuted.Render(fmt.Sprintf("   … and %d more", len(b.items)-i)) + "\n")
 			break
