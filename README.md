@@ -1,5 +1,12 @@
 # dnszoner
 
+![dnszoner in 28 seconds](docs/demo.gif)
+
+```sh
+GOPRIVATE=github.com/chrismaximin go install github.com/chrismaximin/dnszoner@latest
+dnszoner --fake   # try it with made-up data, no account needed
+```
+
 A terminal editor for DNS zones across providers (AWS Route53, Cloudflare,
 Namecheap, GoDaddy, OVH, Hetzner, DigitalOcean, Google Cloud DNS and
 Azure DNS), built for people with a lot of domains.
@@ -83,27 +90,19 @@ rest still apply.
 
 ## Install
 
-From a clone of the repository (needs Go 1.21 or later, which fetches the
-exact Go version this project uses; no C compiler needed):
+The command at the top needs Go 1.21 or later, which fetches the exact Go
+version this project uses; no C compiler is needed. `GOPRIVATE` is needed
+while the repository is private.
+
+From a clone of the repository:
 
 ```sh
 make            # builds ./dnszoner
 make install    # or: installs dnszoner into $(go env GOPATH)/bin
 ```
 
-Without cloning:
-
-```sh
-GOPRIVATE=github.com/chrismaximin go install github.com/chrismaximin/dnszoner@latest
-```
-
-(`GOPRIVATE` is needed while the repository is private.)
-
-Try it without any account using made-up data (kept in a separate database):
-
-```sh
-./dnszoner --fake
-```
+`--fake` uses made-up accounts, domains and records, kept in a separate
+database, so you can try everything without touching real DNS.
 
 ## Development
 
