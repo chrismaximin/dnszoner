@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/chrismaximin/dnszoner/internal/changelog"
 	"github.com/chrismaximin/dnszoner/internal/config"
@@ -26,6 +27,7 @@ const (
 	modePending
 	modeBulk
 	modeAccounts
+	modePaste
 )
 
 type Options struct {
@@ -72,6 +74,7 @@ type Model struct {
 	marked   map[pendingKey]bool // records marked for a bulk edit
 	bulk     *bulkState
 	accounts *accountsState
+	paste    *pasteState
 	edit     *editState
 	pcursor  int // pending view cursor
 
@@ -362,6 +365,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.query.Width = max(10, msg.Width-6)
+		if m.paste != nil {
+			m.paste.area.SetWidth(max(20, msg.Width-2))
+			m.paste.area.SetHeight(m.pasteAreaHeight())
+		}
 		m.scrollToCursor()
 		return m, nil
 	case syncProgressMsg:
@@ -395,6 +402,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.updateBulk(msg)
 	case modeAccounts:
 		return m, m.updateAccounts(msg)
+	case modePaste:
+		return m, m.updatePaste(msg)
 	default:
 		return m, m.updateSearch(msg)
 	}
@@ -417,10 +426,19 @@ func (m *Model) View() string {
 		body = m.viewBulk()
 	case modeAccounts:
 		body = m.viewAccounts()
+	case modePaste:
+		body = m.viewPaste()
 	default:
 		body = m.viewSearch()
 	}
-	return body
+	// Never let a line wrap: it would push the rest of the screen down.
+	lines := strings.Split(body, "\n")
+	for i, l := range lines {
+		if ansi.StringWidth(l) > m.width {
+			lines[i] = ansi.Truncate(l, m.width, "…")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // statusLine renders the bottom bar: status message on the left, counts and

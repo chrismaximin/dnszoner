@@ -56,6 +56,25 @@ shot new
 
 keys Escape Escape
 wait_for "search domains"
+lit "app devel"
+keys C-t
+wait_for "Add records from text"
+cat >"$TMP/paste.txt" <<'TEXT'
+$TTL 3600
+@        IN MX    10 us1-smtp.messagingengine.com.
+@        IN MX    20 us2-smtp.messagingengine.com.
+blog     IN CNAME ghs.googlehosted.com.
+www      IN CNAME applepie.io.
+_dmarc   IN TXT   "v=DMARC1; p=none;"
+@        IN A     192.0.2.300
+TEXT
+$T load-buffer "$TMP/paste.txt"
+$T paste-buffer -p -t s
+wait_for "to add"
+shot paste
+
+keys Escape Escape
+wait_for "search domains"
 lit "mailhost"
 keys C-a Enter
 wait_for "Bulk edit"

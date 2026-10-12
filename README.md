@@ -43,6 +43,21 @@ edit it, or discard it with ctrl+d.
 
 ![Adding a record](docs/new.png)
 
+## Add records from text
+
+To add many records at once, press ctrl+t (or ctrl+t in the new record form)
+and paste them. dnszoner picks the records out of whatever you paste: lines
+copied from its own results, a zone file, a table split by `|` or tabs, or a
+provider's web page (`A Record  @  192.0.2.1  Automatic`). Headers, domain
+names and other lines are skipped. Each record found is checked as you
+paste: new ones are listed for adding, those already in the domain or
+repeated are left out, and invalid ones (bad values, CNAME clashes, names
+of other domains) are listed with the reason. SOA records and the domain's
+own NS records are skipped, as the provider manages them. ctrl+s reviews
+the records to add; apply them now or save them for later.
+
+![Adding records from pasted text](docs/paste.png)
+
 ## Bulk find and replace
 
 Mark records with tab (ctrl+a marks every result) and press Enter to change
@@ -170,6 +185,7 @@ client_ip = "203.0.113.7"
 |         | ↑ ↓ / pgup pgdn | move                                   |
 |         | enter          | edit the selected record (or the marked ones) |
 |         | ctrl+n         | add a record to the selected domain     |
+|         | ctrl+t         | add records from pasted text            |
 |         | tab / ctrl+a   | mark the record / mark every result     |
 |         | ctrl+l         | pending changes                         |
 |         | ctrl+o         | accounts                                |

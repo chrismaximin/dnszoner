@@ -86,6 +86,15 @@ func (m *Model) updateSearch(msg tea.Msg) tea.Cmd {
 				return m.openNew(z) // an empty zone
 			}
 			return nil
+		case "ctrl+t":
+			if m.apply != nil {
+				m.setStatus("Wait for the changes being applied to finish", true)
+				return nil
+			}
+			if z, ok := m.selectedZone(); ok {
+				return m.openPaste(z)
+			}
+			return nil
 		case "ctrl+n":
 			if m.apply != nil {
 				m.setStatus("Wait for the changes being applied to finish", true)
@@ -178,7 +187,7 @@ func (m *Model) viewSearch() string {
 	if len(m.marked) > 0 {
 		b.WriteString(helpLine("enter", "bulk edit marked", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "esc", "clear"))
 	} else {
-		b.WriteString(helpLine("enter", "edit", "ctrl+n", "new record", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "ctrl+o", "accounts", "ctrl+r", "sync", "esc", "clear/quit"))
+		b.WriteString(helpLine("enter", "edit", "ctrl+n", "new", "ctrl+t", "paste", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "ctrl+o", "accounts", "ctrl+r", "sync", "esc", "clear/quit"))
 	}
 	return b.String()
 }

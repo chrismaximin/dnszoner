@@ -225,6 +225,10 @@ func (m *Model) updateEdit(msg tea.Msg) tea.Cmd {
 			return m.stepField(1)
 		case "shift+tab", "up":
 			return m.stepField(-1)
+		case "ctrl+t":
+			if e.creating && !e.draft {
+				return m.openPaste(e.zone)
+			}
 		case "ctrl+d":
 			if e.creating && !e.draft {
 				return nil // nothing saved to delete; esc cancels
@@ -356,42 +360,22 @@ func (m *Model) parseFields() (store.RecordData, error) {
 }
 
 func (m *Model) parseTTL(s string) (int64, error) {
-	if s == "" || strings.EqualFold(s, "auto") {
-		if p := m.provider(m.edit.zone); p != nil {
-			return p.AutoTTL(), nil
-		}
-		return 0, nil
+	ttl, auto, err := records.ParseTTL(s)
+	if auto {
+		return m.autoTTL(m.edit.zone), nil
 	}
-	mult := int64(1)
-	switch strings.ToLower(s[len(s)-1:]) {
-	case "s":
-		s = s[:len(s)-1]
-	case "m":
-		mult, s = 60, s[:len(s)-1]
-	case "h":
-		mult, s = 3600, s[:len(s)-1]
-	case "d":
-		mult, s = 86400, s[:len(s)-1]
-	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("invalid TTL %q (seconds, 5m, 1h, 1d or auto)", s)
-	}
-	return n * mult, nil
+	return ttl, err
 }
 
-// normalizeHost turns "www.example.com", "example.com." or "" into the
-// zone-relative form ("www", "@").
-func normalizeHost(h, zone string) string {
-	h = strings.TrimSuffix(strings.ToLower(h), ".")
-	switch {
-	case h == "" || h == zone:
-		return "@"
-	case strings.HasSuffix(h, "."+zone):
-		return strings.TrimSuffix(h, "."+zone)
+// autoTTL is the TTL the zone's provider uses for "auto".
+func (m *Model) autoTTL(z store.Zone) int64 {
+	if p := m.provider(z); p != nil {
+		return p.AutoTTL()
 	}
-	return h
+	return 0
 }
+
+func normalizeHost(h, zone string) string { return records.NormalizeHost(h, zone) }
 
 func recordName(z store.Zone, d store.RecordData) string {
 	if d.Host == "@" || d.Host == "" {
@@ -581,7 +565,7 @@ func (e *editState) deleteHelp() []string {
 	case e.draft:
 		return []string{"ctrl+d", "discard", "esc", "back"}
 	case e.creating:
-		return []string{"esc", "cancel"}
+		return []string{"ctrl+t", "paste many", "esc", "cancel"}
 	default:
 		return []string{"ctrl+d", "delete", "esc", "back"}
 	}
