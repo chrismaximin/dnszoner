@@ -1,4 +1,4 @@
-.PHONY: build install test screenshots clean
+.PHONY: build install test screenshots snapshot clean
 
 # make: build ./dnszoner
 build:
@@ -16,5 +16,9 @@ test:
 screenshots:
 	scripts/screenshots.sh
 
+# Builds a release locally into dist/ without publishing; needs goreleaser.
+snapshot:
+	goreleaser release --snapshot --clean
+
 clean:
-	rm -f dnszoner
+	rm -rf dnszoner dist

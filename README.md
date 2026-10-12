@@ -3,7 +3,7 @@
 ![dnszoner in 28 seconds](docs/demo.gif)
 
 ```sh
-go install github.com/chrismaximin/dnszoner@latest
+brew install chrismaximin/tap/dnszoner   # or: go install github.com/chrismaximin/dnszoner@latest
 dnszoner --fake   # try it with made-up data, no account needed
 ```
 
@@ -90,8 +90,21 @@ rest still apply.
 
 ## Install
 
-The command at the top needs Go 1.21 or later, which fetches the exact Go
-version this project uses; no C compiler is needed.
+With [Homebrew](https://brew.sh) on macOS or Linux:
+
+```sh
+brew install chrismaximin/tap/dnszoner
+```
+
+Or download a binary for macOS, Linux or Windows from the
+[releases](https://github.com/chrismaximin/dnszoner/releases).
+
+With Go 1.21 or later (which fetches the exact Go version this project
+uses; no C compiler is needed):
+
+```sh
+go install github.com/chrismaximin/dnszoner@latest
+```
 
 From a clone of the repository:
 
@@ -108,8 +121,17 @@ database, so you can try everything without touching real DNS.
 ```sh
 make test          # go vet and the tests
 make screenshots   # regenerates the images in docs/
-make clean         # removes the built binary
+make snapshot      # builds release archives into dist/ (needs goreleaser)
+make clean         # removes the built binary and dist/
 ```
+
+To release, push a version tag (`git tag -a v0.2.0 -m v0.2.0 && git push
+origin v0.2.0`): the release workflow builds the binaries with
+[GoReleaser](https://goreleaser.com), publishes them as a GitHub release
+and updates the Homebrew cask in
+[chrismaximin/homebrew-tap](https://github.com/chrismaximin/homebrew-tap).
+It needs a `HOMEBREW_TAP_GITHUB_TOKEN` secret: a token that can write to
+the tap repository.
 
 ## Change log
 
@@ -287,6 +309,7 @@ subscription_id = "…"
 --no-sync       don't refresh from the providers on startup
 --fake          use made-up sources, domains and records
 --fake-reset    with --fake, regenerate the fake data
+--version       print the version
 ```
 
 ## Screenshots

@@ -1,0 +1,54 @@
+# Release builds: push a vX.Y.Z tag and the release workflow runs this.
+# Try it locally with: make snapshot
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^README"
+      - "^docs"
+
+homebrew_casks:
+  - name: dnszoner
+    repository:
+      owner: chrismaximin
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/chrismaximin/dnszoner
+    description: Terminal editor for DNS zones across providers
+    commit_author:
+      name: Chris Maximin
+      email: chris@chrismaximin.com
+    # The binaries aren't notarized: let macOS run them without a warning.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/dnszoner"]
+          end

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -16,6 +17,19 @@ import (
 	"github.com/chrismaximin/dnszoner/internal/store"
 	"github.com/chrismaximin/dnszoner/internal/ui"
 )
+
+// version is set by release builds; go install builds use the module version.
+var version = ""
+
+func versionString() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "dev"
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -32,6 +46,7 @@ func run() error {
 		fakeReset  = flag.Bool("fake-reset", false, "with --fake, regenerate the fake data")
 		noSync     = flag.Bool("no-sync", false, "don't refresh from providers on startup (ctrl+r syncs)")
 		logPath    = flag.String("log", "", "file every record change is logged to (default: "+changelog.DefaultPath(false)+")")
+		showVer    = flag.Bool("version", false, "print the version and exit")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: dnszoner [flags]\n\n")
@@ -39,6 +54,10 @@ func run() error {
 		fmt.Fprintf(flag.CommandLine.Output(), "\nConfig file: %s (edit accounts in the app with ctrl+o)\n", config.DefaultPath())
 	}
 	flag.Parse()
+	if *showVer {
+		fmt.Println("dnszoner", versionString())
+		return nil
+	}
 
 	if *dbPath == "" {
 		dir, err := os.UserCacheDir()
