@@ -12,6 +12,7 @@ import (
 
 	"github.com/libdns/libdns"
 
+	"github.com/chrismaximin/dnszoner/internal/config"
 	"github.com/chrismaximin/dnszoner/internal/store"
 )
 
@@ -36,6 +37,14 @@ type Provider interface {
 	IsAutoTTL(ttl int64) bool
 	// Concurrency is how many zones may be fetched at once during a sync.
 	Concurrency() int
+}
+
+// New returns the provider for a configured source.
+func New(src config.Source) Provider {
+	if src.Provider == "namecheap" {
+		return NewNamecheap(src)
+	}
+	return NewRoute53(src)
 }
 
 // recordAPI is the subset of libdns used to read and change records.

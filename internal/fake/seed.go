@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"time"
 
+	"github.com/chrismaximin/dnszoner/internal/config"
 	"github.com/chrismaximin/dnszoner/internal/store"
 )
 
@@ -15,6 +16,24 @@ var Sources = []store.Source{
 	{Name: "AWS staging", Provider: "route53"},
 	{Name: "Namecheap", Provider: "namecheap"},
 	{Name: "Namecheap clients", Provider: "namecheap"},
+}
+
+// ConfigSource is a plausible account config for a fake source, so the
+// accounts screen has something to show.
+func ConfigSource(src store.Source) config.Source {
+	c := config.Source{Name: src.Name, Provider: src.Provider}
+	switch src.Name {
+	case "AWS prod":
+		c.Profile = "prod"
+	case "AWS staging":
+		c.Profile, c.Region = "staging", "eu-west-1"
+	default:
+		c.APIUser, c.APIKey = "acme", "fake-api-key-0000"
+		if src.Name == "Namecheap clients" {
+			c.APIUser = "acme-clients"
+		}
+	}
+	return c
 }
 
 var (

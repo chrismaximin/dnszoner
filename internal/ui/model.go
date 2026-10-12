@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/chrismaximin/dnszoner/internal/config"
 	"github.com/chrismaximin/dnszoner/internal/dns"
 	"github.com/chrismaximin/dnszoner/internal/search"
 	"github.com/chrismaximin/dnszoner/internal/store"
@@ -23,13 +24,17 @@ const (
 	modeEdit
 	modePending
 	modeBulk
+	modeAccounts
 )
 
 type Options struct {
 	Store       *store.Store
 	Providers   map[string]dns.Provider // by source name
 	SyncOnStart bool
-	Fake        bool
+	Fake        bool // changes to the accounts are not saved
+
+	Config     *config.Config
+	ConfigPath string
 }
 
 type pendingKey struct {
@@ -61,15 +66,17 @@ type Model struct {
 	cursor int // index into lines, always a record line when there is one
 	offset int
 
-	marked  map[pendingKey]bool // records marked for a bulk edit
-	bulk    *bulkState
-	edit    *editState
-	pcursor int // pending view cursor
+	marked   map[pendingKey]bool // records marked for a bulk edit
+	bulk     *bulkState
+	accounts *accountsState
+	edit     *editState
+	pcursor  int // pending view cursor
 
 	// Sync state.
 	syncEvents   chan syncer.Progress
 	syncProgress map[string]syncer.Progress
 	syncErrs     []string
+	syncErrBySrc map[string]string // first error of the last sync, per source
 	reloadQueued bool
 	dataDirty    bool
 
@@ -96,6 +103,9 @@ func New(opts Options) *Model {
 	q.Focus()
 	m := &Model{opts: opts, query: q, syncProgress: map[string]syncer.Progress{}, marked: map[pendingKey]bool{}}
 	m.loadErr = m.reload()
+	if len(opts.Config.Sources) == 0 && len(m.zones) == 0 {
+		m.openAccounts() // first run
+	}
 	return m
 }
 
@@ -235,14 +245,30 @@ type syncProgressMsg struct {
 }
 type reloadTickMsg struct{}
 
-func (m *Model) startSync() tea.Cmd {
-	if m.syncEvents != nil || len(m.opts.Providers) == 0 {
+// startSync refreshes the given sources, or all of them when none are given.
+func (m *Model) startSync(sources ...string) tea.Cmd {
+	provs := m.opts.Providers
+	if len(sources) > 0 {
+		provs = map[string]dns.Provider{}
+		for _, s := range sources {
+			if p, ok := m.opts.Providers[s]; ok {
+				provs[s] = p
+			}
+		}
+	}
+	if m.syncEvents != nil || len(provs) == 0 {
 		return nil
 	}
 	m.syncEvents = make(chan syncer.Progress, 64)
 	m.syncProgress = map[string]syncer.Progress{}
 	m.syncErrs = nil
-	go syncer.Run(context.Background(), m.opts.Store, m.opts.Providers, m.syncEvents)
+	if m.syncErrBySrc == nil {
+		m.syncErrBySrc = map[string]string{}
+	}
+	for s := range provs {
+		delete(m.syncErrBySrc, s)
+	}
+	go syncer.Run(context.Background(), m.opts.Store, provs, m.syncEvents)
 	return m.waitSync()
 }
 
@@ -272,6 +298,9 @@ func (m *Model) handleSync(msg syncProgressMsg) tea.Cmd {
 			label += " " + p.Zone
 		}
 		m.syncErrs = append(m.syncErrs, label+": "+p.Err.Error())
+		if _, ok := m.syncErrBySrc[p.Source]; !ok {
+			m.syncErrBySrc[p.Source] = strings.TrimPrefix(label+": ", p.Source+": ") + p.Err.Error()
+		}
 	}
 	m.syncProgress[p.Source] = p
 	m.dataDirty = true
@@ -324,6 +353,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case applyDoneMsg:
 		return m, m.handleApplyDone(msg)
+	case testDoneMsg:
+		m.handleTestDone(msg)
+		return m, nil
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -337,6 +369,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.updatePending(msg)
 	case modeBulk:
 		return m, m.updateBulk(msg)
+	case modeAccounts:
+		return m, m.updateAccounts(msg)
 	default:
 		return m, m.updateSearch(msg)
 	}
@@ -357,6 +391,8 @@ func (m *Model) View() string {
 		body = m.viewPending()
 	case modeBulk:
 		body = m.viewBulk()
+	case modeAccounts:
+		body = m.viewAccounts()
 	default:
 		body = m.viewSearch()
 	}

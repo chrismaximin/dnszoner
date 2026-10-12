@@ -120,6 +120,9 @@ func (m *Model) updateSearch(msg tea.Msg) tea.Cmd {
 			}
 			m.setStatus("", false)
 			return m.startSync()
+		case "ctrl+o":
+			m.openAccounts()
+			return nil
 		case "ctrl+l":
 			m.mode = modePending
 			m.pcursor = 0
@@ -151,7 +154,7 @@ func (m *Model) viewSearch() string {
 	if len(m.lines) == 0 {
 		msg := "  No matches."
 		if len(m.zones) == 0 {
-			msg = "  No zones cached yet. Add sources to the config file and press ctrl+r to sync."
+			msg = "  No zones cached yet. Press ctrl+o to add an account."
 		}
 		b.WriteString(stMuted.Render(msg) + "\n")
 		end++
@@ -163,7 +166,7 @@ func (m *Model) viewSearch() string {
 	if len(m.marked) > 0 {
 		b.WriteString(helpLine("enter", "bulk edit marked", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "esc", "clear"))
 	} else {
-		b.WriteString(helpLine("enter", "edit", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "ctrl+r", "sync", "esc", "clear/quit"))
+		b.WriteString(helpLine("enter", "edit", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "ctrl+o", "accounts", "ctrl+r", "sync", "esc", "clear/quit"))
 	}
 	return b.String()
 }

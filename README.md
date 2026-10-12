@@ -65,28 +65,50 @@ Try it without any account using made-up data (kept in a separate database):
 dnszoner --fake
 ```
 
-## Configure
+## Accounts
 
-List your provider accounts in `~/.config/dnszoner/config.json` (see
-`dnszoner -h` for the exact path on your system):
+Press ctrl+o to manage your provider accounts; on first run the app opens
+there. Add, edit, delete and test accounts from a form: pick the provider,
+and only its settings are shown, each with a hint. Secrets are masked
+(ctrl+r shows them), and ctrl+t tests the connection before you save.
+Saving an account syncs it straight away. Renaming an account keeps its
+cached zones.
 
-```json
-{
-  "sources": [
-    { "name": "AWS prod", "provider": "route53", "profile": "prod" },
-    { "name": "AWS staging", "provider": "route53",
-      "access_key_id": "AKIA…", "secret_access_key": "…" },
-    { "name": "Namecheap", "provider": "namecheap",
-      "api_user": "you", "api_key": "…", "client_ip": "203.0.113.7" }
-  ]
-}
+![Accounts](docs/accounts.png)
+
+![Adding an account](docs/account-form.png)
+
+Accounts are saved to `config.toml` in your user config directory
+(`~/.config/dnszoner/` on Linux, `~/Library/Application Support/dnszoner/`
+on macOS; `dnszoner -h` prints the path). It is written readable only by
+you, since it holds credentials, and you can also edit it by hand:
+
+```toml
+[[sources]]
+name = "AWS prod"
+provider = "route53"
+profile = "prod"
+
+[[sources]]
+name = "AWS staging"
+provider = "route53"
+access_key_id = "AKIA…"
+secret_access_key = "…"
+
+[[sources]]
+name = "Namecheap"
+provider = "namecheap"
+api_user = "you"
+api_key = "…"
+client_ip = "203.0.113.7"
 ```
 
 - **route53**: uses `profile`, or static keys, or the usual AWS environment
-  variables and shared config.
+  variables and shared config. `region` is optional.
 - **namecheap**: needs API access enabled and your IP whitelisted.
-  `client_ip` is discovered automatically when omitted. Calls are rate
-  limited to stay under Namecheap's API limits.
+  `client_ip` is discovered automatically when omitted; set `api_endpoint` to
+  use the sandbox. Calls are rate limited to stay under Namecheap's API
+  limits.
 
 ## Keys
 
@@ -97,6 +119,7 @@ List your provider accounts in `~/.config/dnszoner/config.json` (see
 |         | enter          | edit the selected record (or the marked ones) |
 |         | tab / ctrl+a   | mark the record / mark every result     |
 |         | ctrl+l         | pending changes                         |
+|         | ctrl+o         | accounts                                |
 |         | ctrl+r         | sync from the providers                 |
 |         | esc            | clear the search, then the marks, then quit |
 | Edit    | type           | replace the selected field              |
@@ -107,6 +130,8 @@ List your provider accounts in `~/.config/dnszoner/config.json` (see
 |         | ctrl+d         | delete the record                       |
 | Pending | enter / A      | apply the selected change / all of them |
 |         | e / x          | edit / discard the selected change      |
+| Accounts | a / enter / d | add / edit / delete an account          |
+|         | t / s          | test the connection / sync the account  |
 
 ## Flags
 

@@ -64,3 +64,17 @@ keys Enter l
 keys C-l
 wait_for "Pending changes"
 shot pending
+
+keys Escape C-o
+wait_for "Accounts"
+keys t
+wait_for "connected"
+shot accounts
+keys Down Down Down a Right Tab
+lit "Namecheap personal"
+keys Tab
+lit "chris"
+keys Tab
+lit "0123456789abcdef"
+keys Tab
+shot account-form

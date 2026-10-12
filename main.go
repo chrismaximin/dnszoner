@@ -34,7 +34,7 @@ func run() error {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: dnszoner [flags]\n\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(flag.CommandLine.Output(), "\nConfig file: %s\n", config.DefaultPath())
+		fmt.Fprintf(flag.CommandLine.Output(), "\nConfig file: %s (edit accounts in the app with ctrl+o)\n", config.DefaultPath())
 	}
 	flag.Parse()
 
@@ -57,6 +57,7 @@ func run() error {
 
 	providers := map[string]dns.Provider{}
 	syncOnStart := !*noSync
+	cfg := &config.Config{}
 	if *useFake {
 		empty, err := st.Empty()
 		if err != nil {
@@ -69,29 +70,27 @@ func run() error {
 		}
 		for _, src := range fake.Sources {
 			providers[src.Name] = &dns.Fake{Store: st, Source: src.Name}
+			cfg.Sources = append(cfg.Sources, fake.ConfigSource(src))
 		}
 		syncOnStart = false
 	} else {
-		cfg, err := config.Load(*configPath)
-		if err != nil {
+		if cfg, err = config.Load(*configPath); err != nil {
 			return err
 		}
 		var sources []store.Source
 		for _, src := range cfg.Sources {
 			sources = append(sources, store.Source{Name: src.Name, Provider: src.Provider})
-			switch src.Provider {
-			case "route53":
-				providers[src.Name] = dns.NewRoute53(src)
-			case "namecheap":
-				providers[src.Name] = dns.NewNamecheap(src)
-			}
+			providers[src.Name] = dns.New(src)
 		}
 		if err := st.SetSources(sources); err != nil {
 			return err
 		}
 	}
 
-	m := ui.New(ui.Options{Store: st, Providers: providers, SyncOnStart: syncOnStart, Fake: *useFake})
+	m := ui.New(ui.Options{
+		Store: st, Providers: providers, SyncOnStart: syncOnStart, Fake: *useFake,
+		Config: cfg, ConfigPath: *configPath,
+	})
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }

@@ -154,6 +154,20 @@ func (s *Store) SetSources(sources []Source) error {
 
 func (s *Store) Sources() ([]Source, error) { return querySources(s.db) }
 
+// RenameSource moves a source's cached zones to its new name.
+func (s *Store) RenameSource(old, new string) error {
+	return s.tx(func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO sources(name, provider) SELECT ?, provider FROM sources WHERE name = ?`, new, old); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE zones SET source = ? WHERE source = ?`, new, old); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`DELETE FROM sources WHERE name = ?`, old)
+		return err
+	})
+}
+
 type querier interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
