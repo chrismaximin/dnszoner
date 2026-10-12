@@ -111,8 +111,8 @@ func (p *Route53) GetRecords(ctx context.Context, zone store.Zone) ([]store.Reco
 	return fromLibdns(recs), nil
 }
 
-func (p *Route53) Apply(ctx context.Context, zone store.Zone, ch Change) error {
-	return applyLibdns(ctx, p.zoneProvider(zone), zone.Name, ch)
+func (p *Route53) Apply(ctx context.Context, zone store.Zone, chs []Change) []error {
+	return applyLibdns(ctx, p.zoneProvider(zone), zone.Name, chs)
 }
 
 func (p *Route53) AutoTTL() int64           { return 300 }

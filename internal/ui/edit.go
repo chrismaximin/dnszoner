@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -214,12 +213,20 @@ func (m *Model) parseFields() (store.RecordData, error) {
 	// Unchanged TXT values etc. may not round-trip through the parser, so
 	// only validate what the user touched.
 	if d.Type != e.rec.Type || d.Value != e.rec.Value {
-		rr := libdns.RR{Name: d.Host, Type: d.Type, Data: d.Value, TTL: time.Duration(ttl) * time.Second}
-		if _, err := rr.Parse(); err != nil {
-			return d, fmt.Errorf("invalid %s value: %v", d.Type, err)
+		if err := validateRecord(d); err != nil {
+			return d, err
 		}
 	}
 	return d, nil
+}
+
+// validateRecord checks that the value parses for the record type.
+func validateRecord(d store.RecordData) error {
+	rr := libdns.RR{Name: d.Host, Type: d.Type, Data: d.Value, TTL: time.Duration(d.TTL) * time.Second}
+	if _, err := rr.Parse(); err != nil {
+		return fmt.Errorf("invalid %s value: %v", d.Type, err)
+	}
+	return nil
 }
 
 func (m *Model) parseTTL(s string) (int64, error) {
@@ -285,73 +292,19 @@ func (m *Model) saveForLater() tea.Cmd {
 	return m.reloadNow()
 }
 
-func (m *Model) reloadNow() tea.Cmd {
-	if err := m.reload(); err != nil {
-		m.setStatus("Reading cache: "+err.Error(), true)
-	}
-	return nil
-}
-
-type applyDoneMsg struct {
-	pendingID int64 // 0 when applied from the edit view
-	zone      store.Zone
-	change    dns.Change
-	err       error
-	rest      []store.Pending // remaining queue when applying all
-}
-
 func (m *Model) applyNow() tea.Cmd {
 	e := m.edit
-	prov := m.provider(e.zone)
-	if prov == nil {
+	if m.provider(e.zone) == nil {
 		e.applyErr = fmt.Sprintf("source %q is not configured", e.zone.Source)
 		return nil
 	}
-	m.busy = "Applying to " + e.zone.Source + "…"
-	return applyCmd(prov, e.zone, m.currentChange(), 0, nil)
+	ch := m.currentChange()
+	return m.startApply([]store.Pending{{ZoneID: e.zone.ID, Kind: ch.Kind, Old: ch.Old, New: ch.New}}, true)
 }
 
-func applyCmd(prov dns.Provider, z store.Zone, ch dns.Change, pendingID int64, rest []store.Pending) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		err := prov.Apply(ctx, z, ch)
-		return applyDoneMsg{pendingID: pendingID, zone: z, change: ch, err: err, rest: rest}
-	}
-}
-
-func (m *Model) handleApplyDone(msg applyDoneMsg) tea.Cmd {
-	m.busy = ""
-	name := recordName(msg.zone, msg.change.Old)
-	if msg.err != nil {
-		if msg.pendingID != 0 {
-			_ = m.opts.Store.SetPendingError(msg.pendingID, msg.err.Error())
-		} else if m.edit != nil {
-			m.edit.applyErr = msg.err.Error()
-		}
-		m.setStatus(fmt.Sprintf("Failed to apply %s: %v", name, msg.err), true)
-	} else {
-		st := m.opts.Store
-		err := st.ApplyLocal(msg.zone.ID, msg.change.Kind, msg.change.Old, msg.change.New)
-		if err == nil {
-			err = st.DeletePendingFor(msg.zone.ID, msg.change.Old)
-		}
-		if err != nil {
-			m.setStatus("Applied, but updating the cache failed: "+err.Error(), true)
-		} else {
-			verb := "Saved"
-			if msg.change.Kind == store.PendingDelete {
-				verb = "Deleted"
-			}
-			m.setStatus(fmt.Sprintf("%s %s on %s", verb, name, msg.zone.Source), false)
-		}
-		if msg.pendingID == 0 {
-			m.closeEdit()
-		}
-	}
-	m.reloadNow()
-	if len(msg.rest) > 0 {
-		return m.applyPending(msg.rest)
+func (m *Model) reloadNow() tea.Cmd {
+	if err := m.reload(); err != nil {
+		m.setStatus("Reading cache: "+err.Error(), true)
 	}
 	return nil
 }

@@ -334,8 +334,22 @@ func (s *Store) ApplyLocal(zoneID int64, kind PendingKind, old, new RecordData) 
 
 // SavePending queues a change, replacing any change already queued for the
 // same record.
-func (s *Store) SavePending(p Pending) error {
-	_, err := s.db.Exec(`INSERT INTO pending(zone_id, kind, old_type, old_host, old_value, old_ttl,
+func (s *Store) SavePending(p Pending) error { return s.SavePendings([]Pending{p}) }
+
+// SavePendings saves several changes in one transaction.
+func (s *Store) SavePendings(ps []Pending) error {
+	return s.tx(func(tx *sql.Tx) error {
+		for _, p := range ps {
+			if err := savePending(tx, p); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func savePending(tx *sql.Tx, p Pending) error {
+	_, err := tx.Exec(`INSERT INTO pending(zone_id, kind, old_type, old_host, old_value, old_ttl,
 			new_type, new_host, new_value, new_ttl, created_at)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(zone_id, old_type, old_host, old_value) DO UPDATE SET

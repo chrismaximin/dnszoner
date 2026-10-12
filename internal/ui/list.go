@@ -23,12 +23,13 @@ func (m *Model) listHeight() int {
 
 func (m *Model) scrollToCursor() {
 	h := m.listHeight()
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-		// Show the zone header above the first record of a group.
-		if m.offset > 0 && m.lines[m.offset-1].rec < 0 {
-			m.offset--
-		}
+	// Show the zone header above the first record of a group.
+	top := m.cursor
+	if top > 0 && top <= len(m.lines) && m.lines[top-1].rec < 0 {
+		top--
+	}
+	if top < m.offset {
+		m.offset = top
 	}
 	if m.cursor >= m.offset+h {
 		m.offset = m.cursor - h + 1
@@ -71,9 +72,23 @@ func (m *Model) updateSearch(msg tea.Msg) tea.Cmd {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		switch k.String() {
 		case "enter":
+			if m.apply != nil {
+				m.setStatus("Wait for the changes being applied to finish", true)
+				return nil
+			}
+			if len(m.marked) > 0 {
+				return m.openBulk()
+			}
 			if r, ok := m.selectedRecord(); ok {
 				return m.openEdit(r)
 			}
+			return nil
+		case "tab":
+			m.toggleMark()
+			m.moveCursor(1)
+			return nil
+		case "ctrl+a":
+			m.toggleMarkAll()
 			return nil
 		case "up", "ctrl+p", "ctrl+k":
 			m.moveCursor(-1)
@@ -88,11 +103,15 @@ func (m *Model) updateSearch(msg tea.Msg) tea.Cmd {
 			m.moveCursor(m.listHeight())
 			return nil
 		case "esc":
-			if m.query.Value() == "" {
+			switch {
+			case m.query.Value() != "":
+				m.query.SetValue("")
+				m.runSearch(true)
+			case len(m.marked) > 0:
+				m.marked = map[pendingKey]bool{}
+			default:
 				return tea.Quit
 			}
-			m.query.SetValue("")
-			m.runSearch(true)
 			return nil
 		case "ctrl+r":
 			if m.syncEvents != nil {
@@ -141,7 +160,11 @@ func (m *Model) viewSearch() string {
 		b.WriteString("\n")
 	}
 	b.WriteString(m.statusLine() + "\n")
-	b.WriteString(helpLine("enter", "edit", "↑↓", "move", "ctrl+l", "pending", "ctrl+r", "sync", "esc", "clear/quit"))
+	if len(m.marked) > 0 {
+		b.WriteString(helpLine("enter", "bulk edit marked", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "esc", "clear"))
+	} else {
+		b.WriteString(helpLine("enter", "edit", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "ctrl+r", "sync", "esc", "clear/quit"))
+	}
 	return b.String()
 }
 
@@ -185,6 +208,10 @@ func (m *Model) renderLine(i, hostW, valueW int) string {
 
 	cells := pad(data.Type, colType) + " " + pad(hostLabel(data.Host), hostW) + " " +
 		pad(value, valueW) + " " + pad(m.ttlLabel(z, data.TTL), colTTL)
+
+	if m.marked[keyOf(r.ZoneID, r.RecordData)] {
+		marker = stTitle.Render("✓")
+	}
 
 	selected := i == m.cursor
 	switch {

@@ -36,3 +36,16 @@ func TestSearchRanksHostAndZoneTerms(t *testing.T) {
 		t.Fatalf("source search: %+v", got)
 	}
 }
+
+func TestSearchZoneAndValueTerms(t *testing.T) {
+	zones := []Zone{{Name: "acme-mint.app", Source: "Namecheap"}, {Name: "other.com", Source: "Namecheap"}}
+	recs := []Record{
+		{Zone: 0, Host: "@", Value: "10 mx1.newmail.io.", Type: "MX"},
+		{Zone: 0, Host: "www", Value: "acme-mint.app.", Type: "CNAME"},
+		{Zone: 1, Host: "@", Value: "10 mx1.newmail.io.", Type: "MX"},
+	}
+	got := NewIndex(zones, recs).Search("acme-mint newmail")
+	if len(got) != 1 || got[0].Zone != 0 || len(got[0].Records) != 1 || got[0].Records[0] != 0 {
+		t.Fatalf("expected the acme-mint.app MX record only, got %+v", got)
+	}
+}

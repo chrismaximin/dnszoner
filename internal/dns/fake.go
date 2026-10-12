@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/chrismaximin/dnszoner/internal/store"
@@ -32,24 +33,28 @@ func (p *Fake) GetRecords(ctx context.Context, zone store.Zone) ([]store.RecordD
 	return p.Store.ZoneRecords(zone.ID)
 }
 
-func (p *Fake) Apply(ctx context.Context, zone store.Zone, ch Change) error {
+func (p *Fake) Apply(ctx context.Context, zone store.Zone, chs []Change) []error {
+	errs := make([]error, len(chs))
 	select {
 	case <-time.After(400 * time.Millisecond):
 	case <-ctx.Done():
-		return ctx.Err()
+		for i := range errs {
+			errs[i] = ctx.Err()
+		}
+		return errs
 	}
 	recs, err := p.Store.ZoneRecords(zone.ID)
-	if err != nil {
-		return err
-	}
-	for _, r := range recs {
-		if sameSet(r, ch.Old) && r.Value == ch.Old.Value {
-			return nil
+	for i, ch := range chs {
+		switch {
+		case err != nil:
+			errs[i] = err
+		case !slices.ContainsFunc(recs, func(r store.RecordData) bool { return sameSet(r, ch.Old) && r.Value == ch.Old.Value }):
+			errs[i] = ErrConflict
 		}
 	}
-	return ErrConflict
+	return errs
 }
 
 func (p *Fake) AutoTTL() int64           { return 0 }
 func (p *Fake) IsAutoTTL(ttl int64) bool { return ttl == 0 || ttl == 1799 }
-func (p *Fake) Concurrency() int         { return 1 }
+func (p *Fake) Concurrency() int         { return 4 }

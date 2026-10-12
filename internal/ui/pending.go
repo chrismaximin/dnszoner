@@ -6,13 +6,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/chrismaximin/dnszoner/internal/dns"
 	"github.com/chrismaximin/dnszoner/internal/store"
 )
 
 func (m *Model) updatePending(msg tea.Msg) tea.Cmd {
 	k, ok := msg.(tea.KeyMsg)
-	if !ok || m.busy != "" {
+	if !ok || m.busy != "" && k.String() != "esc" {
 		return nil
 	}
 	switch k.String() {
@@ -24,11 +23,11 @@ func (m *Model) updatePending(msg tea.Msg) tea.Cmd {
 		m.pcursor = min(len(m.pending)-1, m.pcursor+1)
 	case "enter", "a":
 		if m.pcursor < len(m.pending) {
-			return m.applyPending([]store.Pending{m.pending[m.pcursor]})
+			return m.startApply([]store.Pending{m.pending[m.pcursor]}, false)
 		}
 	case "A":
 		if len(m.pending) > 0 {
-			return m.applyPending(append([]store.Pending(nil), m.pending...))
+			return m.startApply(append([]store.Pending(nil), m.pending...), false)
 		}
 	case "e":
 		if m.pcursor < len(m.pending) {
@@ -51,32 +50,6 @@ func (m *Model) updatePending(msg tea.Msg) tea.Cmd {
 		}
 	}
 	return nil
-}
-
-// applyPending applies queued changes one at a time; handleApplyDone
-// continues with the rest.
-func (m *Model) applyPending(queue []store.Pending) tea.Cmd {
-	for len(queue) > 0 {
-		p := queue[0]
-		queue = queue[1:]
-		z, ok := m.zoneByID(p.ZoneID)
-		if !ok {
-			continue
-		}
-		prov := m.provider(z)
-		if prov == nil {
-			_ = m.opts.Store.SetPendingError(p.ID, fmt.Sprintf("source %q is not configured", z.Source))
-			continue
-		}
-		left := ""
-		if len(queue) > 0 {
-			left = fmt.Sprintf(" (%d more queued)", len(queue))
-		}
-		m.busy = fmt.Sprintf("Applying %s on %s…%s", recordName(z, p.Old), z.Source, left)
-		ch := dns.Change{Kind: p.Kind, Old: p.Old, New: p.New}
-		return applyCmd(prov, z, ch, p.ID, queue)
-	}
-	return m.reloadNow()
 }
 
 func (m *Model) viewPending() string {

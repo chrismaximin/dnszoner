@@ -22,6 +22,7 @@ const (
 	modeSearch mode = iota
 	modeEdit
 	modePending
+	modeBulk
 )
 
 type Options struct {
@@ -60,6 +61,8 @@ type Model struct {
 	cursor int // index into lines, always a record line when there is one
 	offset int
 
+	marked  map[pendingKey]bool // records marked for a bulk edit
+	bulk    *bulkState
 	edit    *editState
 	pcursor int // pending view cursor
 
@@ -70,7 +73,9 @@ type Model struct {
 	reloadQueued bool
 	dataDirty    bool
 
-	busy      string // non-empty while a provider call is in flight
+	busy      string   // non-empty while a provider call is in flight
+	apply     *applier // changes being applied
+	lastJob   applyJob // most recently dispatched or finished
 	status    string
 	statusErr bool
 
@@ -89,7 +94,7 @@ func New(opts Options) *Model {
 	q.Prompt = "  "
 	q.Placeholder = "search domains, hosts and values…"
 	q.Focus()
-	m := &Model{opts: opts, query: q, syncProgress: map[string]syncer.Progress{}}
+	m := &Model{opts: opts, query: q, syncProgress: map[string]syncer.Progress{}, marked: map[pendingKey]bool{}}
 	m.loadErr = m.reload()
 	return m
 }
@@ -141,6 +146,15 @@ func (m *Model) reload() error {
 		sr = append(sr, search.Record{Zone: zi, Host: r.Host, Value: r.Value, Type: r.Type})
 	}
 	m.records = kept
+	live := make(map[pendingKey]bool, len(kept))
+	for _, r := range kept {
+		live[keyOf(r.ZoneID, r.RecordData)] = true
+	}
+	for k := range m.marked {
+		if !live[k] {
+			delete(m.marked, k)
+		}
+	}
 	m.pendByKy = make(map[pendingKey]store.Pending, len(pending))
 	for _, p := range pending {
 		m.pendByKy[keyOf(p.ZoneID, p.Old)] = p
@@ -321,6 +335,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.updateEdit(msg)
 	case modePending:
 		return m, m.updatePending(msg)
+	case modeBulk:
+		return m, m.updateBulk(msg)
 	default:
 		return m, m.updateSearch(msg)
 	}
@@ -339,6 +355,8 @@ func (m *Model) View() string {
 		body = m.viewEdit()
 	case modePending:
 		body = m.viewPending()
+	case modeBulk:
+		body = m.viewBulk()
 	default:
 		body = m.viewSearch()
 	}
@@ -362,6 +380,9 @@ func (m *Model) statusLine() string {
 		right = append(right, s)
 	}
 	right = append(right, fmt.Sprintf("%d zones", len(m.zones)), fmt.Sprintf("%d records", len(m.records)))
+	if n := len(m.marked); n > 0 {
+		right = append(right, stSource.Render(fmt.Sprintf("%d marked", n)))
+	}
 	if n := len(m.pending); n > 0 {
 		right = append(right, stPending.Render(fmt.Sprintf("%d pending", n)))
 	}

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libdns/libdns"
 	"github.com/libdns/namecheap"
 
 	"github.com/chrismaximin/dnszoner/internal/config"
@@ -176,16 +177,44 @@ func (p *Namecheap) GetRecords(ctx context.Context, zone store.Zone) ([]store.Re
 	return fromLibdns(recs), nil
 }
 
-func (p *Namecheap) Apply(ctx context.Context, zone store.Zone, ch Change) error {
+func (p *Namecheap) Apply(ctx context.Context, zone store.Zone, chs []Change) []error {
 	prov, err := p.libdns(ctx)
 	if err != nil {
-		return err
+		errs := make([]error, len(chs))
+		for i := range errs {
+			errs[i] = err
+		}
+		return errs
 	}
-	// A verification read plus read-modify-write calls (getHosts + setHosts).
-	if err := p.limiter.wait(ctx, 3); err != nil {
-		return err
+	return applyLibdns(ctx, limitedAPI{prov, p.limiter}, zone.Name, chs)
+}
+
+// limitedAPI reserves rate limit slots before each libdns call. Setting and
+// deleting are read-modify-write: getHosts then setHosts.
+type limitedAPI struct {
+	api     recordAPI
+	limiter *limiter
+}
+
+func (l limitedAPI) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
+	if err := l.limiter.wait(ctx, 1); err != nil {
+		return nil, err
 	}
-	return applyLibdns(ctx, prov, zone.Name, ch)
+	return l.api.GetRecords(ctx, zone)
+}
+
+func (l limitedAPI) SetRecords(ctx context.Context, zone string, recs []libdns.Record) ([]libdns.Record, error) {
+	if err := l.limiter.wait(ctx, 2); err != nil {
+		return nil, err
+	}
+	return l.api.SetRecords(ctx, zone, recs)
+}
+
+func (l limitedAPI) DeleteRecords(ctx context.Context, zone string, recs []libdns.Record) ([]libdns.Record, error) {
+	if err := l.limiter.wait(ctx, 2); err != nil {
+		return nil, err
+	}
+	return l.api.DeleteRecords(ctx, zone, recs)
 }
 
 // Namecheap shows a 1799s TTL as "Automatic".
