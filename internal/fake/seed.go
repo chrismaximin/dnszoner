@@ -64,6 +64,8 @@ func Seed(st *store.Store) error {
 		return err
 	}
 
+	// A separate generator, so adding it left the rest of the data as it was.
+	shared := rand.New(rand.NewPCG(7, 7))
 	used := map[string]bool{}
 	now := time.Now()
 	for i, src := range Sources {
@@ -93,12 +95,36 @@ func Seed(st *store.Store) error {
 			return err
 		}
 		for _, z := range saved {
-			if err := st.SetRecords(z.ID, records(r, src.Provider, z.Name), now); err != nil {
+			recs := records(r, src.Provider, z.Name)
+			if z.Name != "applepie.io" {
+				recs = addOldServer(shared, recs)
+			}
+			if err := st.SetRecords(z.ID, recs, now); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// OldServer is an address many subdomains still point to, as when a server
+// moves and every domain using it needs updating.
+const OldServer = "198.51.100.7"
+
+// addOldServer points a free subdomain of about one zone in nine at
+// OldServer.
+func addOldServer(r *rand.Rand, recs []store.RecordData) []store.RecordData {
+	if r.IntN(9) != 0 {
+		return recs
+	}
+	hosts := []string{"api", "app", "shop", "status", "portal", "legacy"}
+	host := hosts[r.IntN(len(hosts))]
+	for _, rec := range recs {
+		if rec.Host == host {
+			return recs // taken: keep the zone as it is
+		}
+	}
+	return append(recs, store.RecordData{Type: "A", Host: host, Value: OldServer, TTL: 300})
 }
 
 func records(r *rand.Rand, provider, zone string) []store.RecordData {
