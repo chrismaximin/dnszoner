@@ -218,7 +218,7 @@ func (m *Model) reviewEdit() tea.Cmd {
 	e := m.edit
 	d, err := m.parseFields()
 	if err != nil {
-		e.err = err.Error()
+		e.err = capitalize(err.Error())
 		return nil
 	}
 	if d == e.rec.RecordData {
@@ -383,13 +383,14 @@ func (m *Model) viewEdit() string {
 				old = stMuted.Render(old)
 			}
 			b.WriteString("           " + old + "\n")
-			if i == fValue {
-				b.WriteString("           " + m.viewValueCheck())
+			if check := m.viewValueCheck(); i == fValue && check != "" {
+				b.WriteString(check)
+			} else {
+				b.WriteString("\n")
 			}
-			b.WriteString("\n")
 		}
 		if e.err != "" {
-			b.WriteString(" " + stErr.Render(e.err) + "\n")
+			b.WriteString(m.wrap(e.err, " ", stErr))
 		}
 	}
 
@@ -422,6 +423,9 @@ func (m *Model) viewTypeSelector() string {
 	return strings.Join(parts, " ")
 }
 
+// checkIndent lines the value check up with the field values.
+const checkIndent = "           "
+
 // viewValueCheck says whether the value is valid for the selected type, and
 // how it will be saved when that differs from what was typed.
 func (m *Model) viewValueCheck() string {
@@ -435,11 +439,11 @@ func (m *Model) viewValueCheck() string {
 		if ex, ok := records.Example[e.typ()]; ok && !strings.Contains(s, ex) {
 			s += ", e.g. " + ex
 		}
-		return stErr.Render(truncate(s, max(10, m.width-12)))
+		return m.wrap(s, checkIndent, stErr)
 	case v != e.fields[fValue].input.Value():
-		return stOK.Render("✓ valid "+e.typ()) + stMuted.Render(", saved as "+truncate(v, max(10, m.width-40)))
+		return m.wrap("✓ valid "+e.typ()+", saved as "+v, checkIndent, stOK)
 	default:
-		return stOK.Render("✓ valid " + e.typ())
+		return m.wrap("✓ valid "+e.typ(), checkIndent, stOK)
 	}
 }
 
@@ -468,7 +472,7 @@ func (m *Model) viewConfirm() string {
 		}
 	}
 	if e.applyErr != "" {
-		b.WriteString("\n " + stErr.Render("Error: "+e.applyErr) + "\n")
+		b.WriteString("\n" + m.wrap("Error: "+e.applyErr, " ", stErr))
 	}
 	return b.String()
 }

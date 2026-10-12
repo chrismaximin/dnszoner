@@ -274,3 +274,15 @@ func truncate(s string, w int) string {
 }
 
 func visibleWidth(s string) int { return ansi.StringWidth(s) }
+
+// wrap word-wraps msg to fit the screen after indent, rendering each line
+// with st. Words longer than a line are broken. The result ends with a
+// newline.
+func (m *Model) wrap(msg, indent string, st lipgloss.Style) string {
+	var b strings.Builder
+	w := max(10, m.width-ansi.StringWidth(indent)-1)
+	for _, line := range strings.Split(ansi.Wrap(msg, w, ""), "\n") {
+		b.WriteString(indent + st.Render(strings.TrimRight(line, " ")) + "\n")
+	}
+	return b.String()
+}

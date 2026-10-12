@@ -345,7 +345,7 @@ func (m *Model) viewBulk() string {
 		}
 	}
 	if b.err != "" {
-		s.WriteString("\n " + stErr.Render(b.err) + "\n")
+		s.WriteString("\n" + m.wrap(b.err, " ", stErr))
 	}
 
 	for i := strings.Count(s.String(), "\n"); i < m.height-2; i++ {

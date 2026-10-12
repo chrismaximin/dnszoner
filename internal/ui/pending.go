@@ -59,34 +59,26 @@ func (m *Model) viewPending() string {
 		b.WriteString(stMuted.Render("  Nothing saved for later.") + "\n")
 	}
 
-	// Each change takes up to 3 lines; keep the cursor visible.
-	per := 3
-	visible := max(1, (m.height-5)/per)
-	start := max(0, m.pcursor-visible+1)
-	for i := start; i < len(m.pending) && i < start+visible; i++ {
-		p := m.pending[i]
-		z, _ := m.zoneByID(p.ZoneID)
-		marker := "  "
-		if i == m.pcursor {
-			marker = stTitle.Render("› ")
+	// Entries vary in height once errors wrap: scroll back from the cursor as
+	// far as fits, then fill the screen from there.
+	room := max(1, m.height-5)
+	start, used := m.pcursor, 0
+	for i := min(m.pcursor, len(m.pending)-1); i >= 0; i-- {
+		h := strings.Count(m.viewPendingEntry(i), "\n")
+		if used+h > room && i < m.pcursor {
+			break
 		}
-		head := stZone.Render(recordName(z, p.Old)) + " " + stSource.Render("["+z.Source+"]")
-		b.WriteString(" " + marker + head + "\n")
-		o := p.Old
-		var detail string
-		if p.Kind == store.PendingDelete {
-			detail = stErr.Render("delete ") + stDeleted.Render(fmt.Sprintf("%s %s %s", o.Type, hostLabel(o.Host), o.Value))
+		start, used = i, used+h
+	}
+	used = 0
+	for i := start; i < len(m.pending); i++ {
+		entry := m.viewPendingEntry(i)
+		if h := strings.Count(entry, "\n"); used+h > room && i > m.pcursor {
+			break
 		} else {
-			n := p.New
-			detail = fmt.Sprintf("%s %s %s %s", o.Type, hostLabel(o.Host), o.Value, m.ttlLabel(z, o.TTL)) +
-				"  →  " + stOK.Render(fmt.Sprintf("%s %s %s %s", n.Type, hostLabel(n.Host), n.Value, m.ttlLabel(z, n.TTL)))
+			used += h
 		}
-		b.WriteString("     " + truncate(detail, max(10, m.width-6)) + "\n")
-		if p.LastError != "" {
-			b.WriteString("     " + stErr.Render(truncate("last attempt failed: "+p.LastError, max(10, m.width-6))) + "\n")
-		} else {
-			b.WriteString("\n")
-		}
+		b.WriteString(entry)
 	}
 
 	lines := strings.Count(b.String(), "\n")
@@ -95,5 +87,33 @@ func (m *Model) viewPending() string {
 	}
 	b.WriteString(m.statusLine() + "\n")
 	b.WriteString(helpLine("enter", "apply", "A", "apply all", "e", "edit", "x", "discard", "esc", "back"))
+	return b.String()
+}
+
+// viewPendingEntry renders one pending change, ending with a blank line.
+func (m *Model) viewPendingEntry(i int) string {
+	var b strings.Builder
+	p := m.pending[i]
+	z, _ := m.zoneByID(p.ZoneID)
+	marker := "  "
+	if i == m.pcursor {
+		marker = stTitle.Render("› ")
+	}
+	head := stZone.Render(recordName(z, p.Old)) + " " + stSource.Render("["+z.Source+"]")
+	b.WriteString(" " + marker + head + "\n")
+	o := p.Old
+	var detail string
+	if p.Kind == store.PendingDelete {
+		detail = stErr.Render("delete ") + stDeleted.Render(fmt.Sprintf("%s %s %s", o.Type, hostLabel(o.Host), o.Value))
+	} else {
+		n := p.New
+		detail = fmt.Sprintf("%s %s %s %s", o.Type, hostLabel(o.Host), o.Value, m.ttlLabel(z, o.TTL)) +
+			"  →  " + stOK.Render(fmt.Sprintf("%s %s %s %s", n.Type, hostLabel(n.Host), n.Value, m.ttlLabel(z, n.TTL)))
+	}
+	b.WriteString("     " + truncate(detail, max(10, m.width-6)) + "\n")
+	if p.LastError != "" {
+		b.WriteString(m.wrap("last attempt failed: "+p.LastError, "     ", stErr))
+	}
+	b.WriteString("\n")
 	return b.String()
 }
