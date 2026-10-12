@@ -1,0 +1,97 @@
+// dnszoner is a terminal editor for DNS zones across providers.
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/chrismaximin/dnszoner/internal/config"
+	"github.com/chrismaximin/dnszoner/internal/dns"
+	"github.com/chrismaximin/dnszoner/internal/fake"
+	"github.com/chrismaximin/dnszoner/internal/store"
+	"github.com/chrismaximin/dnszoner/internal/ui"
+)
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "dnszoner:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	var (
+		configPath = flag.String("config", config.DefaultPath(), "config file listing provider accounts")
+		dbPath     = flag.String("db", "", "cache database (default: in the user cache dir)")
+		useFake    = flag.Bool("fake", false, "use a separate database filled with made-up sources, domains and records")
+		fakeReset  = flag.Bool("fake-reset", false, "with --fake, regenerate the fake data")
+		noSync     = flag.Bool("no-sync", false, "don't refresh from providers on startup (ctrl+r syncs)")
+	)
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: dnszoner [flags]\n\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(flag.CommandLine.Output(), "\nConfig file: %s\n", config.DefaultPath())
+	}
+	flag.Parse()
+
+	if *dbPath == "" {
+		dir, err := os.UserCacheDir()
+		if err != nil {
+			return err
+		}
+		name := "cache.db"
+		if *useFake {
+			name = "fake.db"
+		}
+		*dbPath = filepath.Join(dir, "dnszoner", name)
+	}
+	st, err := store.Open(*dbPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	providers := map[string]dns.Provider{}
+	syncOnStart := !*noSync
+	if *useFake {
+		empty, err := st.Empty()
+		if err != nil {
+			return err
+		}
+		if empty || *fakeReset {
+			if err := fake.Seed(st); err != nil {
+				return fmt.Errorf("seeding fake data: %w", err)
+			}
+		}
+		for _, src := range fake.Sources {
+			providers[src.Name] = &dns.Fake{Store: st, Source: src.Name}
+		}
+		syncOnStart = false
+	} else {
+		cfg, err := config.Load(*configPath)
+		if err != nil {
+			return err
+		}
+		var sources []store.Source
+		for _, src := range cfg.Sources {
+			sources = append(sources, store.Source{Name: src.Name, Provider: src.Provider})
+			switch src.Provider {
+			case "route53":
+				providers[src.Name] = dns.NewRoute53(src)
+			case "namecheap":
+				providers[src.Name] = dns.NewNamecheap(src)
+			}
+		}
+		if err := st.SetSources(sources); err != nil {
+			return err
+		}
+	}
+
+	m := ui.New(ui.Options{Store: st, Providers: providers, SyncOnStart: syncOnStart, Fake: *useFake})
+	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
+	return err
+}
