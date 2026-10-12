@@ -1,7 +1,7 @@
 # dnszoner
 
 A terminal editor for DNS zones across providers (AWS Route53, Cloudflare,
-Namecheap, GoDaddy and OVH), built for people with a lot of domains.
+Namecheap, GoDaddy, OVH and Hetzner), built for people with a lot of domains.
 
 Every zone and record is cached in SQLite, so the app opens instantly with
 everything loaded and refreshes from the providers in the background.
@@ -189,6 +189,11 @@ endpoint = "ovh-eu"
 application_key = "…"
 application_secret = "…"
 consumer_key = "…"
+
+[[sources]]
+name = "Hetzner"
+provider = "hetzner"
+api_token = "…"
 ```
 
 - **route53**: uses `profile`, or static keys, or the usual AWS environment
@@ -208,6 +213,11 @@ consumer_key = "…"
   GET, POST, PUT and DELETE rights on `/domain/*` (create them at
   `eu.api.ovh.com/createToken`, or the `ca.` / `us.` equivalents, and set
   `endpoint` to match). The zone is refreshed after each change.
+- **hetzner**: a Read & Write API token from the Hetzner Console project
+  holding the zones (Security › API tokens). This is the DNS in the Hetzner
+  Cloud API, which replaced the old DNS Console in 2026: its tokens don't
+  work. Secondary zones are listed but read only. TXT values are quoted
+  for Hetzner automatically.
 
 ## Keys
 

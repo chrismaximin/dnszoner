@@ -53,6 +53,8 @@ func New(src config.Source) Provider {
 		return NewGoDaddy(src)
 	case "ovh":
 		return NewOVH(src)
+	case "hetzner":
+		return NewHetzner(src)
 	default:
 		return NewRoute53(src)
 	}

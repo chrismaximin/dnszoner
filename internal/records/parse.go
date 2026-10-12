@@ -364,13 +364,5 @@ func unquoteTXT(v string) string {
 	if !strings.HasPrefix(v, `"`) || !strings.HasSuffix(v, `"`) || len(v) < 2 {
 		return v
 	}
-	var b strings.Builder
-	for _, t := range tokens(v) {
-		if s, err := strconv.Unquote(t); err == nil {
-			b.WriteString(s)
-		} else {
-			b.WriteString(strings.Trim(t, `"`))
-		}
-	}
-	return b.String()
+	return UnquoteTXT(v)
 }

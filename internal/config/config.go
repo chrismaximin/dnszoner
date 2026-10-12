@@ -14,7 +14,7 @@ import (
 )
 
 // Providers are the supported provider kinds.
-var Providers = []string{"route53", "cloudflare", "namecheap", "godaddy", "ovh"}
+var Providers = []string{"route53", "cloudflare", "namecheap", "godaddy", "ovh", "hetzner"}
 
 // ProviderLabel is how each provider is shown in the UI.
 var ProviderLabel = map[string]string{
@@ -23,6 +23,7 @@ var ProviderLabel = map[string]string{
 	"namecheap":  "Namecheap",
 	"godaddy":    "GoDaddy",
 	"ovh":        "OVH",
+	"hetzner":    "Hetzner",
 }
 
 // Source is one provider account. Credentials not set here fall back to the
@@ -38,7 +39,7 @@ type Source struct {
 	SecretAccessKey string `toml:"secret_access_key,omitempty"`
 	SessionToken    string `toml:"session_token,omitempty"`
 
-	// cloudflare
+	// cloudflare, hetzner
 	APIToken string `toml:"api_token,omitempty"`
 
 	// namecheap (and godaddy's api_key)
@@ -117,7 +118,7 @@ func (s Source) Validate() error {
 		if (s.AccessKeyID == "") != (s.SecretAccessKey == "") {
 			return errors.New("set both the access key ID and the secret access key, or neither")
 		}
-	case "cloudflare":
+	case "cloudflare", "hetzner":
 		if s.APIToken == "" {
 			return errors.New("the API token is required")
 		}
