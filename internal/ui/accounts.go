@@ -49,6 +49,12 @@ var acctFields = map[string][]acctField{
 		{"API token", "A personal access token from the DigitalOcean control panel › API, with read and write scopes (or the domain:read, domain:create, domain:update and domain:delete custom scopes)", true,
 			func(s *config.Source) *string { return &s.APIToken }},
 	},
+	"googlecloud": {
+		{"Project ID", "The GCP project holding the Cloud DNS zones; add one account per project", false,
+			func(s *config.Source) *string { return &s.Project }},
+		{"Credentials file", "Optional: path to a service account JSON key with the DNS Administrator role. Empty uses your application default credentials (gcloud auth application-default login)", false,
+			func(s *config.Source) *string { return &s.CredentialsFile }},
+	},
 	"godaddy": {
 		{"API key", "A Production key from developer.godaddy.com/keys. GoDaddy only opens its API to some accounts (by number of domains, or with a Discount Domain Club plan): an ACCESS_DENIED error means yours isn't one", false,
 			func(s *config.Source) *string { return &s.APIKey }},
@@ -489,6 +495,11 @@ func accountDetails(s config.Source) string {
 		}
 	case "cloudflare", "hetzner", "digitalocean":
 		parts = append(parts, "token "+maskKey(s.APIToken))
+	case "googlecloud":
+		parts = append(parts, "project "+s.Project)
+		if s.CredentialsFile != "" {
+			parts = append(parts, "key file")
+		}
 	case "godaddy":
 		parts = append(parts, "key "+maskKey(s.APIKey))
 	case "ovh":
@@ -564,7 +575,7 @@ func (m *Model) viewAccounts() string {
 	b.WriteString(stTitle.Render(" Accounts") + "  " + stMuted.Render(where) + "\n\n")
 
 	if len(srcs) == 0 {
-		b.WriteString("  No accounts yet. Press " + stKey.Render("a") + " to add your AWS Route53, Cloudflare, Namecheap, GoDaddy, OVH, Hetzner or DigitalOcean account.\n")
+		b.WriteString("  No accounts yet. Press " + stKey.Render("a") + " to add your AWS Route53, Cloudflare, Namecheap, GoDaddy, OVH, Hetzner, DigitalOcean or Google Cloud DNS account.\n")
 	} else {
 		nameW, provW, detW := 20, 12, max(16, min(30, m.width-70))
 		b.WriteString(stHeader.Render("   "+pad("Name", nameW)+" "+pad("Provider", provW)+" "+pad("Details", detW)+" Cache") + "\n")

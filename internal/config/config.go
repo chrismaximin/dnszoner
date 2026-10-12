@@ -14,7 +14,7 @@ import (
 )
 
 // Providers are the supported provider kinds.
-var Providers = []string{"route53", "cloudflare", "namecheap", "godaddy", "ovh", "hetzner", "digitalocean"}
+var Providers = []string{"route53", "cloudflare", "namecheap", "godaddy", "ovh", "hetzner", "digitalocean", "googlecloud"}
 
 // ProviderLabel is how each provider is shown in the UI.
 var ProviderLabel = map[string]string{
@@ -25,6 +25,7 @@ var ProviderLabel = map[string]string{
 	"ovh":          "OVH",
 	"hetzner":      "Hetzner",
 	"digitalocean": "DigitalOcean",
+	"googlecloud":  "Google Cloud DNS",
 }
 
 // Source is one provider account. Credentials not set here fall back to the
@@ -51,6 +52,10 @@ type Source struct {
 
 	// godaddy
 	APISecret string `toml:"api_secret,omitempty"`
+
+	// googlecloud
+	Project         string `toml:"project,omitempty"`
+	CredentialsFile string `toml:"credentials_file,omitempty"` // empty: application default credentials
 
 	// ovh
 	Endpoint          string `toml:"endpoint,omitempty"` // ovh-eu (default), ovh-ca, ovh-us...
@@ -130,6 +135,10 @@ func (s Source) Validate() error {
 	case "godaddy":
 		if s.APIKey == "" || s.APISecret == "" {
 			return errors.New("the API key and API secret are required")
+		}
+	case "googlecloud":
+		if s.Project == "" {
+			return errors.New("the GCP project ID is required")
 		}
 	case "ovh":
 		if s.ApplicationKey == "" || s.ApplicationSecret == "" || s.ConsumerKey == "" {

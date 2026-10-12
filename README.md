@@ -1,7 +1,7 @@
 # dnszoner
 
 A terminal editor for DNS zones across providers (AWS Route53, Cloudflare,
-Namecheap, GoDaddy, OVH, Hetzner and DigitalOcean), built for people with a lot of domains.
+Namecheap, GoDaddy, OVH, Hetzner, DigitalOcean and Google Cloud DNS), built for people with a lot of domains.
 
 Every zone and record is cached in SQLite, so the app opens instantly with
 everything loaded and refreshes from the providers in the background.
@@ -199,6 +199,12 @@ api_token = "…"
 name = "DigitalOcean"
 provider = "digitalocean"
 api_token = "…"
+
+[[sources]]
+name = "GCP prod"
+provider = "googlecloud"
+project = "my-project"
+credentials_file = "~/keys/dns-admin.json"   # optional
 ```
 
 - **route53**: uses `profile`, or static keys, or the usual AWS environment
@@ -227,6 +233,13 @@ api_token = "…"
   the `domain:read`, `domain:create`, `domain:update` and `domain:delete`
   custom scopes). Changes are made record by record; the default TTL is
   30 minutes.
+- **googlecloud**: one account per GCP project. Uses a service account key
+  file with the DNS Administrator role, or your application default
+  credentials (`gcloud auth application-default login`) when
+  `credentials_file` is empty. Each zone's changes are applied atomically,
+  and Cloud DNS refuses them if a record set changed since it was read.
+  Private zones are marked as such; record sets with a routing policy
+  (weighted, geo) are left out.
 
 ## Keys
 
