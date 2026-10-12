@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/chrismaximin/dnszoner/internal/config"
 	"github.com/chrismaximin/dnszoner/internal/dns"
@@ -659,19 +660,30 @@ func (m *Model) viewAccountForm() string {
 		}
 	}
 
-	var choices []string
+	// The providers wrap onto more lines, aligned with the field values.
+	indent := strings.Repeat(" ", acctLabelW+4)
+	var lines []string
+	line := ""
 	for i, p := range config.Providers {
+		chip := stMuted.Render(" " + config.ProviderLabel[p] + " ")
 		if i == f.provider {
-			choices = append(choices, stChoice.Render(" "+config.ProviderLabel[p]+" "))
-		} else {
-			choices = append(choices, stMuted.Render(" "+config.ProviderLabel[p]+" "))
+			chip = stChoice.Render(" " + config.ProviderLabel[p] + " ")
 		}
+		if line != "" && ansi.StringWidth(line)+1+ansi.StringWidth(chip) > max(20, m.width-acctLabelW-5) {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += chip
 	}
+	lines = append(lines, line)
 	provHint := ""
 	if f.focus == 0 {
 		provHint = "←→ to choose"
 	}
-	row(0, "Provider", strings.Join(choices, " "), provHint)
+	row(0, "Provider", strings.Join(lines, "\n"+indent), provHint)
 	row(1, "Name", f.name.View(), "How the account is labelled next to its domains")
 	for i, fd := range acctFields[f.providerName()] {
 		row(i+2, fd.label, f.inputs[f.providerName()][i].View(), fd.hint)
