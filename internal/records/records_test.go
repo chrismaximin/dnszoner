@@ -1,6 +1,38 @@
 package records
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestCheckCNAME(t *testing.T) {
+	tests := []struct {
+		typ, host string
+		others    []string
+		want      string // substring of the error, empty for none
+	}{
+		{"CNAME", "www", nil, ""},
+		{"CNAME", "@", nil, "zone apex"},
+		{"CNAME", "", nil, "zone apex"},
+		{"CNAME", "www", []string{"A"}, "www already has an A record"},
+		{"CNAME", "www", []string{"A", "A"}, "A records"},
+		{"CNAME", "www", []string{"A", "MX", "TXT"}, "A, MX and TXT records"},
+		{"CNAME", "www", []string{"CNAME"}, "already has a CNAME record"},
+		{"CNAME", "www", []string{"MX"}, "already has an MX record"},
+		{"A", "www", []string{"CNAME"}, "www has a CNAME"},
+		{"A", "www", []string{"A", "TXT"}, ""},
+		{"TXT", "@", []string{"A", "MX"}, ""},
+	}
+	for _, tt := range tests {
+		err := CheckCNAME(tt.typ, tt.host, tt.others)
+		switch {
+		case tt.want == "" && err != nil:
+			t.Errorf("CheckCNAME(%s, %s, %v) = %v, want nil", tt.typ, tt.host, tt.others, err)
+		case tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)):
+			t.Errorf("CheckCNAME(%s, %s, %v) = %v, want %q", tt.typ, tt.host, tt.others, err, tt.want)
+		}
+	}
+}
 
 func TestNormalize(t *testing.T) {
 	tests := []struct {

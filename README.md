@@ -26,7 +26,9 @@ and CAA, and typing a letter jumps to the next type starting with it. As you
 type, the value is checked against the selected type: an A record must be an
 IPv4 address, a CNAME must be a hostname, an MX must be
 `<priority> <mail server>`, and so on. Surrounding spaces are trimmed. An
-invalid value can't be saved, and bulk edits are checked the same way.
+invalid value can't be saved, and bulk edits are checked the same way. The
+CNAME rules are checked too: a CNAME must be the only record at its name,
+and isn't allowed at the domain root (`@`).
 
 ![Editing a record](docs/edit.png)
 

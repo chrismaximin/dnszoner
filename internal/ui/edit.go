@@ -144,6 +144,29 @@ func (e *editState) valueCheck() (value string, err error, touched bool) {
 	return v, err, true
 }
 
+// cnameCheck applies the CNAME rules to the type and host in the form. An
+// existing record is only checked once its type or host changes.
+func (m *Model) cnameCheck() error {
+	e := m.edit
+	typ := e.typ()
+	host := normalizeHost(strings.TrimSpace(e.fields[fHost].input.Value()), e.zone.Name)
+	isNew := e.creating && !e.draft
+	if !isNew && typ == e.rec.Type && host == hostLabel(e.rec.Host) {
+		return nil
+	}
+	var others []string
+	for _, r := range m.records {
+		if r.ZoneID != e.zone.ID || hostLabel(r.Host) != host {
+			continue
+		}
+		if !isNew && keyOf(r.ZoneID, r.RecordData) == keyOf(e.rec.ZoneID, e.rec.RecordData) {
+			continue // the record being edited
+		}
+		others = append(others, r.Type)
+	}
+	return records.CheckCNAME(typ, host, others)
+}
+
 func (m *Model) focusField(i int) tea.Cmd {
 	e := m.edit
 	e.fields[e.focus].input.Blur()
@@ -312,6 +335,9 @@ func (m *Model) parseFields() (store.RecordData, error) {
 	}
 	if value == "" {
 		return store.RecordData{}, errors.New("the value cannot be empty")
+	}
+	if err := m.cnameCheck(); err != nil {
+		return store.RecordData{}, err
 	}
 	d := store.RecordData{
 		Type:  e.typ(),
@@ -583,6 +609,11 @@ const checkIndent = "           "
 func (m *Model) viewValueCheck() string {
 	e := m.edit
 	v, err, touched := e.valueCheck()
+	if err == nil {
+		if cerr := m.cnameCheck(); cerr != nil {
+			return m.wrap("✗ "+cerr.Error(), checkIndent, stErr)
+		}
+	}
 	switch {
 	case !touched:
 		return ""

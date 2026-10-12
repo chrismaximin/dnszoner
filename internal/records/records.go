@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -115,6 +116,53 @@ func Normalize(typ, value string) (string, error) {
 		return v, err
 	}
 	return v, nil
+}
+
+// CheckCNAME enforces the CNAME rules for a record of type typ at host
+// ("@" for the zone apex): a CNAME must be alone at its name, and is not
+// allowed at the apex. others are the types of the other records already at
+// that host.
+func CheckCNAME(typ, host string, others []string) error {
+	name := host
+	if host == "" || host == "@" {
+		name = "@"
+	}
+	switch {
+	case typ == "CNAME" && name == "@":
+		return errors.New("a CNAME isn't allowed at the zone apex (@); use an A record, or your provider's ALIAS")
+	case typ == "CNAME" && len(others) > 0:
+		return fmt.Errorf("a CNAME can't share its name with other records, and %s already has %s", name, describeTypes(others))
+	case typ != "CNAME" && slices.Contains(others, "CNAME"):
+		return fmt.Errorf("%s has a CNAME, which can't share its name with other records", name)
+	}
+	return nil
+}
+
+// describeTypes turns ["A", "MX", "A"] into "A and MX records".
+func describeTypes(types []string) string {
+	var uniq []string
+	for _, t := range types {
+		if !slices.Contains(uniq, t) {
+			uniq = append(uniq, t)
+		}
+	}
+	switch {
+	case len(types) == 1:
+		return article(types[0]) + " " + types[0] + " record"
+	case len(uniq) == 1:
+		return uniq[0] + " records"
+	default:
+		return strings.Join(uniq[:len(uniq)-1], ", ") + " and " + uniq[len(uniq)-1] + " records"
+	}
+}
+
+// article is "an" for types read letter by letter starting with a vowel
+// sound ("an A", "an MX"), else "a" ("a CNAME", "a TXT").
+func article(typ string) string {
+	if typ != "" && strings.ContainsRune("AEFHILMNORSX", rune(typ[0])) {
+		return "an"
+	}
+	return "a"
 }
 
 // checkHostname accepts a relative or absolute (trailing dot) hostname.
