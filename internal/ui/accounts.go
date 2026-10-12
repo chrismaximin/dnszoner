@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/chrismaximin/dnszoner/internal/config"
 	"github.com/chrismaximin/dnszoner/internal/dns"
@@ -590,7 +591,10 @@ func (m *Model) viewAccountForm() string {
 		}
 		b.WriteString(" " + marker + l + " " + value + "\n")
 		if i == f.focus && hint != "" {
-			b.WriteString(strings.Repeat(" ", acctLabelW+4) + stMuted.Render(truncate(hint, max(10, m.width-acctLabelW-6))) + "\n")
+			indent := strings.Repeat(" ", acctLabelW+4)
+			for _, line := range strings.Split(ansi.Wrap(hint, max(10, m.width-acctLabelW-6), ""), "\n") {
+				b.WriteString(indent + stMuted.Render(strings.TrimRight(line, " ")) + "\n")
+			}
 		}
 	}
 
@@ -612,14 +616,28 @@ func (m *Model) viewAccountForm() string {
 		row(i+2, fd.label, f.inputs[f.providerName()][i].View(), fd.hint)
 	}
 
-	if f.test != nil {
-		b.WriteString("\n " + viewTest(*f.test) + "\n")
+	// para writes a message wrapped to the screen width.
+	para := func(st lipgloss.Style, msg string) {
+		b.WriteString("\n")
+		for _, line := range strings.Split(ansi.Wrap(msg, max(10, m.width-2), ""), "\n") {
+			b.WriteString(" " + st.Render(strings.TrimRight(line, " ")) + "\n")
+		}
+	}
+	if t := f.test; t != nil {
+		switch {
+		case t.running:
+			para(stPending, "testing…")
+		case t.err != nil:
+			para(stErr, "✗ "+t.err.Error())
+		default:
+			para(stOK, fmt.Sprintf("✓ connected, %d zones", t.zones))
+		}
 	}
 	if f.err != "" {
-		b.WriteString("\n " + stErr.Render(f.err) + "\n")
+		para(stErr, f.err)
 	}
 	if m.opts.Fake {
-		b.WriteString("\n " + lipgloss.NewStyle().Foreground(colWarn).Render("--fake: accounts are kept in memory and not written to the config file") + "\n")
+		para(lipgloss.NewStyle().Foreground(colWarn), "--fake: accounts are kept in memory and not written to the config file")
 	}
 
 	for i := strings.Count(b.String(), "\n"); i < m.height-2; i++ {
