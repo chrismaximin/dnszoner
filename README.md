@@ -27,8 +27,10 @@ type, the value is checked against the selected type: an A record must be an
 IPv4 address, a CNAME must be a hostname, an MX must be
 `<priority> <mail server>`, and so on. Surrounding spaces are trimmed. An
 invalid value can't be saved, and bulk edits are checked the same way. The
-CNAME rules are checked too: a CNAME must be the only record at its name,
-and isn't allowed at the domain root (`@`).
+CNAME rules are checked too: a CNAME isn't allowed at the domain root
+(`@`), and a name can't have two. A CNAME sharing its name with other
+records is against the DNS rules as well, but some providers accept it, so
+that is a warning you can confirm past (Route53 will refuse it).
 
 ![Editing a record](docs/edit.png)
 

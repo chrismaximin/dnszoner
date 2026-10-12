@@ -10,18 +10,20 @@ func TestCheckCNAME(t *testing.T) {
 		typ, host string
 		others    []string
 		want      string // substring of the error, empty for none
+		warning   bool
 	}{
-		{"CNAME", "www", nil, ""},
-		{"CNAME", "@", nil, "zone apex"},
-		{"CNAME", "", nil, "zone apex"},
-		{"CNAME", "www", []string{"A"}, "www already has an A record"},
-		{"CNAME", "www", []string{"A", "A"}, "A records"},
-		{"CNAME", "www", []string{"A", "MX", "TXT"}, "A, MX and TXT records"},
-		{"CNAME", "www", []string{"CNAME"}, "already has a CNAME record"},
-		{"CNAME", "www", []string{"MX"}, "already has an MX record"},
-		{"A", "www", []string{"CNAME"}, "www has a CNAME"},
-		{"A", "www", []string{"A", "TXT"}, ""},
-		{"TXT", "@", []string{"A", "MX"}, ""},
+		{"CNAME", "www", nil, "", false},
+		{"CNAME", "@", nil, "zone apex", false},
+		{"CNAME", "", nil, "zone apex", false},
+		{"CNAME", "www", []string{"A"}, "www already has an A record", true},
+		{"CNAME", "www", []string{"A", "A"}, "A records", true},
+		{"CNAME", "www", []string{"A", "MX", "TXT"}, "A, MX and TXT records", true},
+		{"CNAME", "www", []string{"CNAME"}, "can only have one", false},
+		{"CNAME", "www", []string{"A", "CNAME"}, "can only have one", false},
+		{"CNAME", "www", []string{"MX"}, "already has an MX record", true},
+		{"A", "www", []string{"CNAME"}, "www has a CNAME", true},
+		{"A", "www", []string{"A", "TXT"}, "", false},
+		{"TXT", "@", []string{"A", "MX"}, "", false},
 	}
 	for _, tt := range tests {
 		err := CheckCNAME(tt.typ, tt.host, tt.others)
@@ -30,6 +32,8 @@ func TestCheckCNAME(t *testing.T) {
 			t.Errorf("CheckCNAME(%s, %s, %v) = %v, want nil", tt.typ, tt.host, tt.others, err)
 		case tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)):
 			t.Errorf("CheckCNAME(%s, %s, %v) = %v, want %q", tt.typ, tt.host, tt.others, err, tt.want)
+		case err != nil && IsWarning(err) != tt.warning:
+			t.Errorf("CheckCNAME(%s, %s, %v): IsWarning = %v, want %v", tt.typ, tt.host, tt.others, IsWarning(err), tt.warning)
 		}
 	}
 }

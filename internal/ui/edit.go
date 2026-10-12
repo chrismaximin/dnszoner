@@ -50,6 +50,7 @@ type editState struct {
 	confirming bool
 	kind       store.PendingKind
 	newData    store.RecordData
+	warning    string // a rule the change breaks, which the user confirms past
 	applyErr   string
 }
 
@@ -292,6 +293,10 @@ func (m *Model) reviewEdit() tea.Cmd {
 		e.err = capitalize(err.Error())
 		return nil
 	}
+	e.warning = ""
+	if err := m.cnameCheck(); records.IsWarning(err) {
+		e.warning = err.Error() // may start with a host name: keep its case
+	}
 	if e.creating {
 		if e.draft && d == e.rec.RecordData {
 			e.err = "Nothing changed."
@@ -340,7 +345,7 @@ func (m *Model) parseFields() (store.RecordData, error) {
 	if value == "" {
 		return store.RecordData{}, errors.New("the value cannot be empty")
 	}
-	if err := m.cnameCheck(); err != nil {
+	if err := m.cnameCheck(); err != nil && !records.IsWarning(err) {
 		return store.RecordData{}, err
 	}
 	d := store.RecordData{
@@ -594,7 +599,9 @@ func (m *Model) viewValueCheck() string {
 	e := m.edit
 	v, err, touched := e.valueCheck()
 	if err == nil {
-		if cerr := m.cnameCheck(); cerr != nil {
+		if cerr := m.cnameCheck(); records.IsWarning(cerr) {
+			return m.wrap("⚠ "+cerr.Error(), checkIndent, stPending)
+		} else if cerr != nil {
 			return m.wrap("✗ "+cerr.Error(), checkIndent, stErr)
 		}
 	}
@@ -646,6 +653,9 @@ func (m *Model) viewConfirm() string {
 				b.WriteString("   " + stLabel.Render(r[0]) + " " + stDeleted.Render(r[1]) + "  →  " + stOK.Render(r[2]) + "\n")
 			}
 		}
+	}
+	if e.warning != "" && e.kind != store.PendingDelete {
+		b.WriteString("\n" + m.wrap("⚠ "+e.warning, " ", stPending))
 	}
 	if e.applyErr != "" {
 		b.WriteString("\n" + m.wrap("Error: "+e.applyErr, " ", stErr))

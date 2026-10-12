@@ -27,6 +27,7 @@ type pasteItem struct {
 	data   store.RecordData
 	status pasteStatus
 	msg    string
+	warn   bool // added despite msg
 }
 
 type pasteState struct {
@@ -104,9 +105,14 @@ func (m *Model) analyzePaste() {
 			case adding[k]:
 				it.status, it.msg = pasteDuplicate, "repeated in the text"
 			default:
-				if err := records.CheckCNAME(p.Type, p.Host, byHost[p.Host]); err != nil {
+				err := records.CheckCNAME(p.Type, p.Host, byHost[p.Host])
+				switch {
+				case err != nil && !records.IsWarning(err):
 					it.status, it.msg = pasteInvalid, err.Error()
-				} else {
+				default:
+					if err != nil {
+						it.msg, it.warn = err.Error(), true
+					}
 					adding[k] = true
 					byHost[p.Host] = append(byHost[p.Host], p.Type)
 				}
@@ -114,6 +120,16 @@ func (m *Model) analyzePaste() {
 		}
 		ps.items = append(ps.items, it)
 	}
+}
+
+func (ps *pasteState) warnings() int {
+	n := 0
+	for _, it := range ps.items {
+		if it.status == pasteAdd && it.warn {
+			n++
+		}
+	}
+	return n
 }
 
 func (ps *pasteState) count(st pasteStatus) int {
@@ -220,7 +236,11 @@ func (m *Model) viewPaste() string {
 			label string
 		}{{pasteAdd, "to add"}, {pasteExists, "already there"}, {pasteDuplicate, "repeated"}, {pasteSkipped, "skipped"}, {pasteInvalid, "invalid"}} {
 			if n := ps.count(c.st); n > 0 {
-				parts = append(parts, fmt.Sprintf("%d %s", n, c.label))
+				part := fmt.Sprintf("%d %s", n, c.label)
+				if w := ps.warnings(); c.st == pasteAdd && w > 0 {
+					part += stPending.Render(fmt.Sprintf(" (%d with warnings)", w))
+				}
+				parts = append(parts, part)
 			}
 		}
 		if ps.ignored == 1 {
@@ -245,7 +265,11 @@ func (m *Model) viewPaste() string {
 		switch it.status {
 		case pasteAdd:
 			d := it.data
-			rows = append(rows, "   "+stOK.Render("+ "+pad(d.Type, colType)+" "+pad(hostLabel(d.Host), hostW)+" "+pad(d.Value, valW)+" "+m.ttlLabel(ps.zone, d.TTL)))
+			row := "   " + stOK.Render("+ "+pad(d.Type, colType)+" "+pad(hostLabel(d.Host), hostW)+" "+pad(d.Value, valW)+" "+m.ttlLabel(ps.zone, d.TTL))
+			if it.warn {
+				row += "\n" + strings.TrimRight(m.wrap(fmt.Sprintf("⚠ line %d: %s", it.p.Line, it.msg), "     ", stPending), "\n")
+			}
+			rows = append(rows, row)
 		case pasteExists, pasteDuplicate, pasteSkipped:
 			d := it.p
 			rows = append(rows, "   "+stMuted.Render(truncate("= "+pad(d.Type, colType)+" "+pad(hostLabel(d.Host), hostW)+" "+d.Value+"  ("+it.msg+")", max(10, m.width-4))))

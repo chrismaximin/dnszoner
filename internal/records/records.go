@@ -118,10 +118,25 @@ func Normalize(typ, value string) (string, error) {
 	return v, nil
 }
 
-// CheckCNAME enforces the CNAME rules for a record of type typ at host
-// ("@" for the zone apex): a CNAME must be alone at its name, and is not
-// allowed at the apex. others are the types of the other records already at
-// that host.
+// Warning is a broken rule that some providers accept anyway, so the user
+// may go ahead.
+type Warning struct{ Msg string }
+
+func (w *Warning) Error() string { return w.Msg }
+
+// IsWarning reports whether err is only a Warning.
+func IsWarning(err error) bool {
+	var w *Warning
+	return errors.As(err, &w)
+}
+
+const cnameSharing = "; resolvers may ignore the other records, and some providers (like Route53) refuse it"
+
+// CheckCNAME checks the CNAME rules for a record of type typ at host ("@"
+// for the zone apex). others are the types of the other records already at
+// that host. A CNAME at the apex is an error. A CNAME sharing its name with
+// other records breaks the DNS rules too, but some providers allow it, so
+// that is a Warning; two CNAMEs at one name are an error.
 func CheckCNAME(typ, host string, others []string) error {
 	name := host
 	if host == "" || host == "@" {
@@ -130,10 +145,12 @@ func CheckCNAME(typ, host string, others []string) error {
 	switch {
 	case typ == "CNAME" && name == "@":
 		return errors.New("a CNAME isn't allowed at the zone apex (@); use an A record, or your provider's ALIAS")
+	case typ == "CNAME" && slices.Contains(others, "CNAME"):
+		return fmt.Errorf("%s already has a CNAME, and a name can only have one", name)
 	case typ == "CNAME" && len(others) > 0:
-		return fmt.Errorf("a CNAME can't share its name with other records, and %s already has %s", name, describeTypes(others))
+		return &Warning{fmt.Sprintf("a CNAME shouldn't share its name with other records, and %s already has %s", name, describeTypes(others)) + cnameSharing}
 	case typ != "CNAME" && slices.Contains(others, "CNAME"):
-		return fmt.Errorf("%s has a CNAME, which can't share its name with other records", name)
+		return &Warning{fmt.Sprintf("%s has a CNAME, which shouldn't share its name with other records", name) + cnameSharing}
 	}
 	return nil
 }
