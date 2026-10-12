@@ -49,7 +49,7 @@ func (m *Model) moveCursor(delta int) {
 	target := m.cursor
 	for steps := 0; steps < abs(delta); steps++ {
 		next := target + dir
-		for next >= 0 && next < len(m.lines) && m.lines[next].rec < 0 {
+		for next >= 0 && next < len(m.lines) && !m.selectable(next) {
 			next += dir
 		}
 		if next < 0 || next >= len(m.lines) {
@@ -82,6 +82,18 @@ func (m *Model) updateSearch(msg tea.Msg) tea.Cmd {
 			if r, ok := m.selectedRecord(); ok {
 				return m.openEdit(r)
 			}
+			if z, ok := m.selectedZone(); ok {
+				return m.openNew(z) // an empty zone
+			}
+			return nil
+		case "ctrl+n":
+			if m.apply != nil {
+				m.setStatus("Wait for the changes being applied to finish", true)
+				return nil
+			}
+			if z, ok := m.selectedZone(); ok {
+				return m.openNew(z)
+			}
 			return nil
 		case "tab":
 			m.toggleMark()
@@ -93,7 +105,7 @@ func (m *Model) updateSearch(msg tea.Msg) tea.Cmd {
 		case "up", "ctrl+p", "ctrl+k":
 			m.moveCursor(-1)
 			return nil
-		case "down", "ctrl+n", "ctrl+j":
+		case "down", "ctrl+j":
 			m.moveCursor(1)
 			return nil
 		case "pgup":
@@ -166,7 +178,7 @@ func (m *Model) viewSearch() string {
 	if len(m.marked) > 0 {
 		b.WriteString(helpLine("enter", "bulk edit marked", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "esc", "clear"))
 	} else {
-		b.WriteString(helpLine("enter", "edit", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "ctrl+o", "accounts", "ctrl+r", "sync", "esc", "clear/quit"))
+		b.WriteString(helpLine("enter", "edit", "ctrl+n", "new record", "tab", "mark", "ctrl+a", "mark all", "ctrl+l", "pending", "ctrl+o", "accounts", "ctrl+r", "sync", "esc", "clear/quit"))
 	}
 	return b.String()
 }
@@ -188,6 +200,9 @@ func (m *Model) renderLine(i, hostW, valueW int) string {
 		}
 		if len(g.Records) == 0 {
 			s += " " + stMuted.Render("no records")
+			if i == m.cursor {
+				return " " + stSelected.Render(ansi.Strip(s[1:])+"  enter: add one")
+			}
 		}
 		return s
 	}
@@ -212,6 +227,9 @@ func (m *Model) renderLine(i, hostW, valueW int) string {
 	cells := pad(data.Type, colType) + " " + pad(hostLabel(data.Host), hostW) + " " +
 		pad(value, valueW) + " " + pad(m.ttlLabel(z, data.TTL), colTTL)
 
+	if r.ID == 0 {
+		marker = stPending.Render("+") // a new record saved for later
+	}
 	if m.marked[keyOf(r.ZoneID, r.RecordData)] {
 		marker = stTitle.Render("✓")
 	}

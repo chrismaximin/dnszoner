@@ -45,6 +45,17 @@ shot edit
 
 keys Escape Escape
 wait_for "search domains"
+lit "app devel"
+keys C-n
+wait_for "New record"
+keys c Tab
+lit "blog"
+keys Tab
+lit "ghs.googlehosted.com."
+shot new
+
+keys Escape Escape
+wait_for "search domains"
 lit "mailhost"
 keys C-a Enter
 wait_for "Bulk edit"

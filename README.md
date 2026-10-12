@@ -30,6 +30,17 @@ invalid value can't be saved, and bulk edits are checked the same way.
 
 ![Editing a record](docs/edit.png)
 
+## Add a record
+
+Press ctrl+n to add a record to the domain of the selected result (search
+for the domain first). Domains with no records can be selected too: Enter
+adds their first one. The form starts on the type, then the host and the
+value, with the same checks as editing. Apply it now or save it for later:
+a new record saved for later shows in the results with a `+`, where you can
+edit it, or discard it with ctrl+d.
+
+![Adding a record](docs/new.png)
+
 ## Bulk find and replace
 
 Mark records with tab (ctrl+a marks every result) and press Enter to change
@@ -134,6 +145,7 @@ client_ip = "203.0.113.7"
 | Search  | type           | filter                                  |
 |         | ↑ ↓ / pgup pgdn | move                                   |
 |         | enter          | edit the selected record (or the marked ones) |
+|         | ctrl+n         | add a record to the selected domain     |
 |         | tab / ctrl+a   | mark the record / mark every result     |
 |         | ctrl+l         | pending changes                         |
 |         | ctrl+o         | accounts                                |
@@ -144,7 +156,7 @@ client_ip = "203.0.113.7"
 |         | ← → / letter   | on the type: change it / jump to it     |
 |         | tab            | next field                              |
 |         | enter          | save (then enter: apply now, l: later)  |
-|         | ctrl+d         | delete the record                       |
+|         | ctrl+d         | delete the record (discard a new one)   |
 | Pending | enter / A      | apply the selected change / all of them |
 |         | e / x          | edit / discard the selected change      |
 | Accounts | a / enter / d | add / edit / delete an account          |

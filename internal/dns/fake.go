@@ -45,10 +45,14 @@ func (p *Fake) Apply(ctx context.Context, zone store.Zone, chs []Change) []error
 	}
 	recs, err := p.Store.ZoneRecords(zone.ID)
 	for i, ch := range chs {
+		exists := slices.ContainsFunc(recs, func(r store.RecordData) bool { return sameSet(r, ch.Old) && r.Value == ch.Old.Value })
 		switch {
 		case err != nil:
 			errs[i] = err
-		case !slices.ContainsFunc(recs, func(r store.RecordData) bool { return sameSet(r, ch.Old) && r.Value == ch.Old.Value }):
+		case ch.Kind == store.PendingCreate && exists:
+			errs[i] = ErrExists
+		case ch.Kind == store.PendingCreate:
+		case !exists:
 			errs[i] = ErrConflict
 		}
 	}

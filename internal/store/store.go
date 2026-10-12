@@ -47,6 +47,9 @@ type PendingKind string
 const (
 	PendingUpdate PendingKind = "update"
 	PendingDelete PendingKind = "delete"
+	// PendingCreate adds a record. Old holds the new record too, since
+	// pending changes are keyed by their old record.
+	PendingCreate PendingKind = "create"
 )
 
 // Pending is a change saved for later. It is keyed by the record's old
@@ -339,6 +342,13 @@ func (s *Store) ApplyLocal(zoneID int64, kind PendingKind, old, new RecordData) 
 				_, err = s.db.Exec(`UPDATE records SET ttl = ? WHERE zone_id = ? AND type = ? AND host = ?`,
 					new.TTL, zoneID, new.Type, new.Host)
 			}
+		}
+	case PendingCreate:
+		_, err = s.db.Exec(`INSERT INTO records(zone_id, type, host, value, ttl) VALUES(?, ?, ?, ?, ?)`,
+			zoneID, new.Type, new.Host, new.Value, new.TTL)
+		if err == nil {
+			_, err = s.db.Exec(`UPDATE records SET ttl = ? WHERE zone_id = ? AND type = ? AND host = ?`,
+				new.TTL, zoneID, new.Type, new.Host)
 		}
 	default:
 		return fmt.Errorf("unknown change kind %q", kind)

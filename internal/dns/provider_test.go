@@ -101,6 +101,25 @@ func TestApplyLibdnsBatch(t *testing.T) {
 	}
 }
 
+func TestApplyLibdnsCreate(t *testing.T) {
+	api := &memAPI{recs: []store.RecordData{rec("A", "@", "1.1.1.1", 300)}}
+	errs := applyLibdns(context.Background(), api, "example.com", []Change{
+		{Kind: store.PendingCreate, Old: rec("A", "@", "2.2.2.2", 60), New: rec("A", "@", "2.2.2.2", 60)},
+		{Kind: store.PendingCreate, Old: rec("TXT", "_x", "hello", 300), New: rec("TXT", "_x", "hello", 300)},
+		{Kind: store.PendingCreate, Old: rec("A", "@", "1.1.1.1", 300), New: rec("A", "@", "1.1.1.1", 300)},
+	})
+	if errs[0] != nil || errs[1] != nil {
+		t.Fatalf("creates failed: %v", errs)
+	}
+	if !errors.Is(errs[2], ErrExists) {
+		t.Errorf("duplicate create: got %v, want ErrExists", errs[2])
+	}
+	want := strings.Join([]string{"A @ 1.1.1.1 1m0s", "A @ 2.2.2.2 1m0s", "TXT _x hello 5m0s"}, "\n")
+	if got := api.dump(); got != want {
+		t.Errorf("zone after create:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestApplyLibdnsDeleteFailure(t *testing.T) {
 	api := &memAPI{failDeletes: true, recs: []store.RecordData{
 		rec("A", "a", "1.1.1.1", 300),

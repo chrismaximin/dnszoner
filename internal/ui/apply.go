@@ -153,8 +153,11 @@ func (m *Model) finishApply() {
 	case a.total == 1 && a.failed == 0:
 		p := m.lastJob.changes[0]
 		verb := "Saved"
-		if p.Kind == store.PendingDelete {
+		switch p.Kind {
+		case store.PendingDelete:
 			verb = "Deleted"
+		case store.PendingCreate:
+			verb = "Added"
 		}
 		m.setStatus(fmt.Sprintf("%s %s on %s", verb, recordName(m.lastJob.zone, p.Old), m.lastJob.zone.Source), false)
 	case a.total == 1:

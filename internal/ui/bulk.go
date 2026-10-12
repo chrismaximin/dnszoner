@@ -83,8 +83,8 @@ func (m *Model) toggleMarkAll() {
 func (m *Model) openBulk() tea.Cmd {
 	b := &bulkState{}
 	for _, r := range m.records {
-		if !m.marked[keyOf(r.ZoneID, r.RecordData)] {
-			continue
+		if r.ID == 0 || !m.marked[keyOf(r.ZoneID, r.RecordData)] {
+			continue // new records saved for later are edited one by one
 		}
 		z, ok := m.zoneByID(r.ZoneID)
 		if !ok {

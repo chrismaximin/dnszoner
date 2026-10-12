@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -37,8 +38,13 @@ type editState struct {
 	rec    store.Record // as last synced
 	fields [numFields]field
 	focus  int
+	order  []int // field focus order
 	err    string
 	types  []string // choices for the type selector
+
+	// creating is set for a record that is not at the provider yet: a new one,
+	// or a draft (a new record saved for later, which rec then holds).
+	creating, draft bool
 
 	// Confirmation step, once the user asked to save or delete.
 	confirming bool
@@ -52,10 +58,29 @@ func (m *Model) openEdit(r store.Record) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	e := &editState{zone: z, rec: r, types: records.Types}
 	start := r.RecordData
 	if p, ok := m.pendByKy[keyOf(r.ZoneID, r.RecordData)]; ok && p.Kind == store.PendingUpdate {
 		start = p.New // resume the change saved for later
+	}
+	draft := r.ID == 0 // a pending create
+	return m.openEditor(z, r, start, draft, draft)
+}
+
+// openNew starts a new record in the zone.
+func (m *Model) openNew(z store.Zone) tea.Cmd {
+	var ttl int64
+	if p := m.provider(z); p != nil {
+		ttl = p.AutoTTL()
+	}
+	r := store.Record{ZoneID: z.ID, RecordData: store.RecordData{Type: "A", Host: "@", TTL: ttl}}
+	return m.openEditor(z, r, r.RecordData, true, false)
+}
+
+func (m *Model) openEditor(z store.Zone, r store.Record, start store.RecordData, creating, draft bool) tea.Cmd {
+	e := &editState{zone: z, rec: r, types: records.Types, creating: creating, draft: draft}
+	e.order = []int{fValue, fType, fHost, fTTL}
+	if creating {
+		e.order = []int{fType, fHost, fValue, fTTL}
 	}
 	olds := [numFields]string{r.Value, r.Type, hostLabel(r.Host), m.ttlInput(z, r.TTL)}
 	starts := [numFields]string{start.Value, start.Type, hostLabel(start.Host), m.ttlInput(z, start.TTL)}
@@ -75,6 +100,9 @@ func (m *Model) openEdit(r store.Record) tea.Cmd {
 	m.edit = e
 	m.mode = modeEdit
 	m.setStatus("", false)
+	if creating && !draft {
+		return m.focusField(fType)
+	}
 	return m.focusField(fValue)
 }
 
@@ -106,7 +134,10 @@ func (e *editState) jumpType(letter rune) {
 // existing values are kept as they are.
 func (e *editState) valueCheck() (value string, err error, touched bool) {
 	raw := e.fields[fValue].input.Value()
-	if e.typ() == e.rec.Type && strings.TrimSpace(raw) == e.rec.Value {
+	if e.creating && !e.draft && strings.TrimSpace(raw) == "" {
+		return "", nil, false // nothing typed yet
+	}
+	if !(e.creating && !e.draft) && e.typ() == e.rec.Type && strings.TrimSpace(raw) == e.rec.Value {
 		return e.rec.Value, nil, false
 	}
 	v, err := records.Normalize(e.typ(), raw)
@@ -116,11 +147,18 @@ func (e *editState) valueCheck() (value string, err error, touched bool) {
 func (m *Model) focusField(i int) tea.Cmd {
 	e := m.edit
 	e.fields[e.focus].input.Blur()
-	e.focus = (i + numFields) % numFields
+	e.focus = i
 	f := &e.fields[e.focus]
 	f.pristine = true
 	f.input.CursorEnd()
 	return f.input.Focus()
+}
+
+// stepField moves the focus delta fields along the focus order.
+func (m *Model) stepField(delta int) tea.Cmd {
+	e := m.edit
+	n := len(e.order)
+	return m.focusField(e.order[((slices.Index(e.order, e.focus)+delta)%n+n)%n])
 }
 
 func (m *Model) ttlInput(z store.Zone, ttl int64) string {
@@ -144,6 +182,9 @@ func (m *Model) updateEdit(msg tea.Msg) tea.Cmd {
 		case "enter", "y":
 			return m.applyNow()
 		case "l":
+			if e.draft && e.kind == store.PendingDelete {
+				return nil
+			}
 			return m.saveForLater()
 		case "esc", "n":
 			e.confirming = false
@@ -158,10 +199,13 @@ func (m *Model) updateEdit(msg tea.Msg) tea.Cmd {
 			m.closeEdit()
 			return nil
 		case "tab", "down":
-			return m.focusField(e.focus + 1)
+			return m.stepField(1)
 		case "shift+tab", "up":
-			return m.focusField(e.focus - 1)
+			return m.stepField(-1)
 		case "ctrl+d":
+			if e.creating && !e.draft {
+				return nil // nothing saved to delete; esc cancels
+			}
 			e.err = ""
 			e.kind = store.PendingDelete
 			e.confirming = true
@@ -221,6 +265,23 @@ func (m *Model) reviewEdit() tea.Cmd {
 		e.err = capitalize(err.Error())
 		return nil
 	}
+	if e.creating {
+		if e.draft && d == e.rec.RecordData {
+			e.err = "Nothing changed."
+			return nil
+		}
+		for _, r := range m.records {
+			if r.ID != 0 && r.ZoneID == e.zone.ID && r.Type == d.Type && r.Host == d.Host && r.Value == d.Value {
+				e.err = "This record already exists."
+				return nil
+			}
+		}
+		e.kind = store.PendingCreate
+		e.newData = d
+		e.confirming = true
+		e.applyErr = ""
+		return nil
+	}
 	if d == e.rec.RecordData {
 		if _, ok := m.pendByKy[keyOf(e.rec.ZoneID, e.rec.RecordData)]; ok {
 			if err := m.opts.Store.DeletePendingFor(e.rec.ZoneID, e.rec.RecordData); err != nil {
@@ -248,6 +309,9 @@ func (m *Model) parseFields() (store.RecordData, error) {
 	value, err, _ := e.valueCheck()
 	if err != nil {
 		return store.RecordData{}, fmt.Errorf("invalid %s value: %v", e.typ(), err)
+	}
+	if value == "" {
+		return store.RecordData{}, errors.New("the value cannot be empty")
 	}
 	d := store.RecordData{
 		Type:  e.typ(),
@@ -312,19 +376,51 @@ func recordName(z store.Zone, d store.RecordData) string {
 
 func (m *Model) currentChange() dns.Change {
 	e := m.edit
+	if e.kind == store.PendingCreate {
+		return dns.Change{Kind: e.kind, Old: e.newData, New: e.newData}
+	}
 	return dns.Change{Kind: e.kind, Old: e.rec.RecordData, New: e.newData}
 }
 
 func (m *Model) saveForLater() tea.Cmd {
 	e := m.edit
-	ch := m.currentChange()
-	err := m.opts.Store.SavePending(store.Pending{ZoneID: e.zone.ID, Kind: ch.Kind, Old: ch.Old, New: ch.New})
-	if err != nil {
+	if _, err := m.savePendingChange(); err != nil {
 		e.applyErr = err.Error()
 		return nil
 	}
 	m.closeEdit()
-	m.setStatus(fmt.Sprintf("Saved for later: %s (ctrl+l to review)", recordName(e.zone, e.rec.RecordData)), false)
+	name := recordName(e.zone, e.rec.RecordData)
+	if e.creating {
+		name = "new record " + recordName(e.zone, e.newData)
+	}
+	m.setStatus(fmt.Sprintf("Saved for later: %s (ctrl+l to review)", name), false)
+	return m.reloadNow()
+}
+
+// savePendingChange stores the edit as a pending change, replacing the draft
+// it was made from, if any.
+func (m *Model) savePendingChange() (store.Pending, error) {
+	e := m.edit
+	st := m.opts.Store
+	if e.draft {
+		if err := st.DeletePendingFor(e.zone.ID, e.rec.RecordData); err != nil {
+			return store.Pending{}, err
+		}
+	}
+	ch := m.currentChange()
+	p := store.Pending{ZoneID: e.zone.ID, Kind: ch.Kind, Old: ch.Old, New: ch.New}
+	return p, st.SavePending(p)
+}
+
+// discardDraft drops a new record that was saved for later.
+func (m *Model) discardDraft() tea.Cmd {
+	e := m.edit
+	if err := m.opts.Store.DeletePendingFor(e.zone.ID, e.rec.RecordData); err != nil {
+		e.applyErr = err.Error()
+		return nil
+	}
+	m.closeEdit()
+	m.setStatus("Discarded the new record "+recordName(e.zone, e.rec.RecordData), false)
 	return m.reloadNow()
 }
 
@@ -333,6 +429,25 @@ func (m *Model) applyNow() tea.Cmd {
 	if m.provider(e.zone) == nil {
 		e.applyErr = fmt.Sprintf("source %q is not configured", e.zone.Source)
 		return nil
+	}
+	if e.draft {
+		if e.kind == store.PendingDelete {
+			return m.discardDraft()
+		}
+		// Replace the draft first, so the change stays pending if it fails.
+		p, err := m.savePendingChange()
+		if err != nil {
+			e.applyErr = err.Error()
+			return nil
+		}
+		m.reloadNow()
+		for _, q := range m.pending {
+			if keyOf(q.ZoneID, q.Old) == keyOf(p.ZoneID, p.Old) {
+				p = q
+			}
+		}
+		e.rec.RecordData, e.draft = p.Old, true
+		return m.startApply([]store.Pending{p}, true)
 	}
 	ch := m.currentChange()
 	return m.startApply([]store.Pending{{ZoneID: e.zone.ID, Kind: ch.Kind, Old: ch.Old, New: ch.New}}, true)
@@ -348,14 +463,23 @@ func (m *Model) reloadNow() tea.Cmd {
 func (m *Model) viewEdit() string {
 	e := m.edit
 	var b strings.Builder
-	b.WriteString(stTitle.Render(" Edit record") + "  " + stZone.Render(recordName(e.zone, e.rec.RecordData)) +
-		" " + stSource.Render("["+e.zone.Source+"]") + "\n\n")
+	switch {
+	case e.draft:
+		b.WriteString(stTitle.Render(" New record") + "  " + stZone.Render(e.zone.Name) + " " + stSource.Render("["+e.zone.Source+"]") +
+			"  " + stPending.Render("saved for later, not applied yet") + "\n\n")
+	case e.creating:
+		b.WriteString(stTitle.Render(" New record") + "  " + stZone.Render(e.zone.Name) + " " + stSource.Render("["+e.zone.Source+"]") + "\n\n")
+	default:
+		b.WriteString(stTitle.Render(" Edit record") + "  " + stZone.Render(recordName(e.zone, e.rec.RecordData)) +
+			" " + stSource.Render("["+e.zone.Source+"]") + "\n\n")
+	}
 
 	if e.confirming {
 		b.WriteString(m.viewConfirm())
 	} else {
 		oldW := max(10, m.width/3)
-		for i, f := range e.fields {
+		for _, i := range e.order {
+			f := e.fields[i]
 			label := stLabel.Render(fieldLabels[i])
 			if i == e.focus {
 				label = stLabelOn.Render(fieldLabels[i])
@@ -376,16 +500,27 @@ func (m *Model) viewEdit() string {
 				marker = stTitle.Render("› ")
 			}
 			b.WriteString(" " + marker + label + " " + input + "\n")
-			old := "old: " + truncate(f.old, oldW)
-			if strings.TrimSpace(f.input.Value()) != f.old {
-				old = stPending.Render(old)
-			} else {
-				old = stMuted.Render(old)
+			if !e.creating || e.draft {
+				prefix := "old: "
+				if e.draft {
+					prefix = "saved: "
+				}
+				old := prefix + truncate(f.old, oldW)
+				if strings.TrimSpace(f.input.Value()) != f.old {
+					old = stPending.Render(old)
+				} else {
+					old = stMuted.Render(old)
+				}
+				b.WriteString("           " + old + "\n")
 			}
-			b.WriteString("           " + old + "\n")
-			if check := m.viewValueCheck(); i == fValue && check != "" {
-				b.WriteString(check)
-			} else {
+			// The check takes the blank line under an edited value; new
+			// records have no old values, so they keep the blank line.
+			check := ""
+			if i == fValue {
+				check = m.viewValueCheck()
+			}
+			b.WriteString(check)
+			if check == "" || e.creating && !e.draft {
 				b.WriteString("\n")
 			}
 		}
@@ -400,13 +535,30 @@ func (m *Model) viewEdit() string {
 	}
 	b.WriteString(m.statusLine() + "\n")
 	if e.confirming {
-		b.WriteString(helpLine("enter", "apply now", "l", "save for later", "esc", "keep editing"))
+		if e.draft && e.kind == store.PendingDelete {
+			b.WriteString(helpLine("enter", "discard", "esc", "keep editing"))
+		} else {
+			b.WriteString(helpLine("enter", "apply now", "l", "save for later", "esc", "keep editing"))
+		}
 	} else if e.focus == fType {
-		b.WriteString(helpLine("←→", "change type", "letter", "jump to type", "tab", "next field", "enter", "save", "ctrl+d", "delete", "esc", "back"))
+		b.WriteString(helpLine(append([]string{"←→", "change type", "letter", "jump to type", "tab", "next field", "enter", "save"}, e.deleteHelp()...)...))
 	} else {
-		b.WriteString(helpLine("type", "replace", "←→", "edit in place", "tab", "next field", "enter", "save", "ctrl+d", "delete", "esc", "back"))
+		b.WriteString(helpLine(append([]string{"type", "replace", "←→", "edit in place", "tab", "next field", "enter", "save"}, e.deleteHelp()...)...))
 	}
 	return b.String()
+}
+
+// deleteHelp is the help for ctrl+d and esc, which depend on whether the
+// record exists yet.
+func (e *editState) deleteHelp() []string {
+	switch {
+	case e.draft:
+		return []string{"ctrl+d", "discard", "esc", "back"}
+	case e.creating:
+		return []string{"esc", "cancel"}
+	default:
+		return []string{"ctrl+d", "delete", "esc", "back"}
+	}
 }
 
 // viewTypeSelector lists the types with the selected one highlighted.
@@ -450,11 +602,20 @@ func (m *Model) viewValueCheck() string {
 func (m *Model) viewConfirm() string {
 	e := m.edit
 	var b strings.Builder
-	if e.kind == store.PendingDelete {
+	switch {
+	case e.kind == store.PendingCreate:
+		b.WriteString(" " + stZone.Render("Add this record?") + "\n\n")
+		n := e.newData
+		b.WriteString("   " + stOK.Render(fmt.Sprintf("%s  %s  %s  %s", n.Type, hostLabel(n.Host), n.Value, m.ttlLabel(e.zone, n.TTL))) + "\n")
+	case e.kind == store.PendingDelete && e.draft:
+		b.WriteString(" " + stErr.Render("Discard this new record? It was never applied.") + "\n\n")
+		o := e.rec.RecordData
+		b.WriteString(fmt.Sprintf("   %s  %s  %s  %s\n", o.Type, hostLabel(o.Host), o.Value, m.ttlLabel(e.zone, o.TTL)))
+	case e.kind == store.PendingDelete:
 		b.WriteString(" " + stErr.Render("Delete this record?") + "\n\n")
 		o := e.rec.RecordData
 		b.WriteString(fmt.Sprintf("   %s  %s  %s  %s\n", o.Type, hostLabel(o.Host), o.Value, m.ttlLabel(e.zone, o.TTL)))
-	} else {
+	default:
 		b.WriteString(" " + stZone.Render("Save this change?") + "\n\n")
 		o, n := e.rec.RecordData, e.newData
 		rows := [][3]string{

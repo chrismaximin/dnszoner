@@ -103,9 +103,13 @@ func (m *Model) viewPendingEntry(i int) string {
 	b.WriteString(" " + marker + head + "\n")
 	o := p.Old
 	var detail string
-	if p.Kind == store.PendingDelete {
+	switch p.Kind {
+	case store.PendingCreate:
+		n := p.New
+		detail = stOK.Render("add " + fmt.Sprintf("%s %s %s %s", n.Type, hostLabel(n.Host), n.Value, m.ttlLabel(z, n.TTL)))
+	case store.PendingDelete:
 		detail = stErr.Render("delete ") + stDeleted.Render(fmt.Sprintf("%s %s %s", o.Type, hostLabel(o.Host), o.Value))
-	} else {
+	default:
 		n := p.New
 		detail = fmt.Sprintf("%s %s %s %s", o.Type, hostLabel(o.Host), o.Value, m.ttlLabel(z, o.TTL)) +
 			"  →  " + stOK.Render(fmt.Sprintf("%s %s %s %s", n.Type, hostLabel(n.Host), n.Value, m.ttlLabel(z, n.TTL)))

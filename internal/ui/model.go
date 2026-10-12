@@ -138,6 +138,12 @@ func (m *Model) reload() error {
 	if err != nil {
 		return err
 	}
+	// New records saved for later show up alongside the others, with ID 0.
+	for _, p := range pending {
+		if p.Kind == store.PendingCreate {
+			records = append(records, store.Record{ZoneID: p.ZoneID, RecordData: p.Old})
+		}
+	}
 	m.zones, m.records, m.pending = zones, records, pending
 	m.zoneIdx = make(map[int64]int, len(zones))
 	sz := make([]search.Zone, len(zones))
@@ -199,22 +205,37 @@ func (m *Model) runSearch(resetCursor bool) {
 	if resetCursor || m.cursor >= len(m.lines) {
 		m.cursor, m.offset = 0, 0
 	}
-	m.cursor = m.nearestRecordLine(m.cursor, 1)
+	m.cursor = m.nearestSelectable(m.cursor, 1)
 	m.scrollToCursor()
 }
 
-func (m *Model) nearestRecordLine(from, dir int) int {
+// selectable reports whether the cursor can rest on line i: any record, and
+// the header of a zone with no records (to add one).
+func (m *Model) selectable(i int) bool {
+	l := m.lines[i]
+	return l.rec >= 0 || len(m.groups[l.group].Records) == 0
+}
+
+func (m *Model) nearestSelectable(from, dir int) int {
 	for i := from; i >= 0 && i < len(m.lines); i += dir {
-		if m.lines[i].rec >= 0 {
+		if m.selectable(i) {
 			return i
 		}
 	}
 	for i := from; i >= 0 && i < len(m.lines); i -= dir {
-		if m.lines[i].rec >= 0 {
+		if m.selectable(i) {
 			return i
 		}
 	}
 	return 0
+}
+
+// selectedZone is the zone of the selected line.
+func (m *Model) selectedZone() (store.Zone, bool) {
+	if m.cursor < len(m.lines) {
+		return m.zones[m.groups[m.lines[m.cursor].group].Zone], true
+	}
+	return store.Zone{}, false
 }
 
 func (m *Model) selectedRecord() (store.Record, bool) {
@@ -415,7 +436,13 @@ func (m *Model) statusLine() string {
 	if s := m.syncSummary(); s != "" {
 		right = append(right, s)
 	}
-	right = append(right, fmt.Sprintf("%d zones", len(m.zones)), fmt.Sprintf("%d records", len(m.records)))
+	synced := 0
+	for _, r := range m.records {
+		if r.ID != 0 {
+			synced++
+		}
+	}
+	right = append(right, fmt.Sprintf("%d zones", len(m.zones)), fmt.Sprintf("%d records", synced))
 	if n := len(m.marked); n > 0 {
 		right = append(right, stSource.Render(fmt.Sprintf("%d marked", n)))
 	}

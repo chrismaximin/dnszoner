@@ -20,6 +20,9 @@ import (
 // change was not applied.
 var ErrConflict = errors.New("record changed at the provider since the last sync; resync (ctrl+r) and retry")
 
+// ErrExists means a record to create is already at the provider.
+var ErrExists = errors.New("an identical record already exists at the provider; resync (ctrl+r)")
+
 type Change struct {
 	Kind store.PendingKind
 	Old  store.RecordData
@@ -131,6 +134,20 @@ func applyLibdns(ctx context.Context, api recordAPI, zone string, chs []Change) 
 	}
 
 	for i, ch := range chs {
+		if ch.Kind == store.PendingCreate {
+			nk := keyOf(ch.New)
+			ns := get(nk)
+			if slices.ContainsFunc(ns, func(r store.RecordData) bool { return r.Value == ch.New.Value }) {
+				errs[i] = ErrExists
+				continue
+			}
+			ns = append(ns, ch.New)
+			for j := range ns {
+				ns[j].TTL = ch.New.TTL
+			}
+			put(nk, ns)
+			continue
+		}
 		k := keyOf(ch.Old)
 		set := get(k)
 		if !slices.ContainsFunc(set, func(r store.RecordData) bool { return r.Value == ch.Old.Value }) {
