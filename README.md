@@ -52,17 +52,34 @@ rest still apply.
 
 ## Install
 
+From a clone of the repository (needs Go 1.21 or later, which fetches the
+exact Go version this project uses; no C compiler needed):
+
+```sh
+make            # builds ./dnszoner
+make install    # or: installs dnszoner into $(go env GOPATH)/bin
+```
+
+Without cloning:
+
 ```sh
 GOPRIVATE=github.com/chrismaximin go install github.com/chrismaximin/dnszoner@latest
 ```
 
-(`GOPRIVATE` is needed while the repository is private; or clone it and run
-`go build`.)
+(`GOPRIVATE` is needed while the repository is private.)
 
 Try it without any account using made-up data (kept in a separate database):
 
 ```sh
-dnszoner --fake
+./dnszoner --fake
+```
+
+## Development
+
+```sh
+make test          # go vet and the tests
+make screenshots   # regenerates the images in docs/
+make clean         # removes the built binary
 ```
 
 ## Accounts
@@ -145,6 +162,6 @@ client_ip = "203.0.113.7"
 
 ## Screenshots
 
-The images above are generated from `--fake` data by
-`scripts/screenshots.sh` (needs tmux, ffmpeg and
+The images above are generated from `--fake` data by `make screenshots`
+(`scripts/screenshots.sh`; needs tmux, ffmpeg and
 [freeze](https://github.com/charmbracelet/freeze)).
