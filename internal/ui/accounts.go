@@ -87,8 +87,10 @@ var acctFields = map[string][]acctField{
 			func(s *config.Source) *string { return &s.APIUser }},
 		{"API key", "From the same API Access page", true,
 			func(s *config.Source) *string { return &s.APIKey }},
-		{"Client IP", "The whitelisted IP calls come from; empty discovers your public IP", false,
+		{"Client IP", "The whitelisted IP calls come from; empty discovers your public IP (or the proxy's)", false,
 			func(s *config.Source) *string { return &s.ClientIP }},
+		{"Proxy", "Optional, to call from a fixed IP to whitelist: ssh://user@host goes through a server you can ssh to (with your ssh config and keys), or socks5://host:port, http://host:port. Credentials stay encrypted end to end", false,
+			func(s *config.Source) *string { return &s.Proxy }},
 		{"API endpoint", "Empty for production; https://api.sandbox.namecheap.com/xml.response for the sandbox", false,
 			func(s *config.Source) *string { return &s.APIEndpoint }},
 	},
@@ -503,6 +505,9 @@ func accountDetails(s config.Source) string {
 		parts = append(parts, "user "+s.APIUser)
 		if strings.Contains(s.APIEndpoint, "sandbox") {
 			parts = append(parts, "sandbox")
+		}
+		if u, err := config.ParseProxy(s.Proxy); err == nil {
+			parts = append(parts, "via "+u.Host)
 		}
 	case "cloudflare", "hetzner", "digitalocean":
 		parts = append(parts, "token "+maskKey(s.APIToken))

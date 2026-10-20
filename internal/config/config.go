@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,7 @@ type Source struct {
 	APIKey      string `toml:"api_key,omitempty"`
 	ClientIP    string `toml:"client_ip,omitempty"`
 	APIEndpoint string `toml:"api_endpoint,omitempty"`
+	Proxy       string `toml:"proxy,omitempty"` // ssh://, socks5:// or http(s):// URL
 
 	// godaddy
 	APISecret string `toml:"api_secret,omitempty"`
@@ -139,6 +141,11 @@ func (s Source) Validate() error {
 		if s.APIUser == "" || s.APIKey == "" {
 			return errors.New("the API user and API key are required")
 		}
+		if s.Proxy != "" {
+			if _, err := ParseProxy(s.Proxy); err != nil {
+				return err
+			}
+		}
 	case "godaddy":
 		if s.APIKey == "" || s.APISecret == "" {
 			return errors.New("the API key and API secret are required")
@@ -162,6 +169,25 @@ func (s Source) Validate() error {
 		return fmt.Errorf("unknown provider %q (%s)", s.Provider, strings.Join(Providers, ", "))
 	}
 	return nil
+}
+
+// ParseProxy checks a proxy setting: ssh://[user@]host[:port] (a host from
+// ~/.ssh/config works too), socks5://, socks5h://, http:// or https://.
+func ParseProxy(s string) (*url.URL, error) {
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" {
+		return nil, fmt.Errorf("proxy %q: expected a URL like ssh://user@host or socks5://host:port", s)
+	}
+	switch u.Scheme {
+	case "ssh":
+		if _, set := u.User.Password(); set || u.Path != "" && u.Path != "/" || strings.HasPrefix(u.Hostname(), "-") {
+			return nil, fmt.Errorf("proxy %q: expected ssh://[user@]host[:port]", s)
+		}
+	case "socks5", "socks5h", "http", "https":
+	default:
+		return nil, fmt.Errorf("proxy %q: the scheme must be ssh, socks5, socks5h, http or https", s)
+	}
+	return u, nil
 }
 
 func btoi(b bool) int {

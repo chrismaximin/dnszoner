@@ -18,7 +18,6 @@ require (
 	github.com/digitalocean/godo v1.225.0
 	github.com/hetznercloud/hcloud-go/v2 v2.52.0
 	github.com/libdns/libdns v1.1.1
-	github.com/libdns/namecheap v1.0.0
 	github.com/libdns/ovh v1.1.0
 	github.com/libdns/route53 v1.6.2
 	github.com/ovh/go-ovh v1.7.0

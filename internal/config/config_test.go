@@ -66,3 +66,16 @@ func TestLoad(t *testing.T) {
 		}
 	}
 }
+
+func TestParseProxy(t *testing.T) {
+	for _, ok := range []string{"ssh://vps", "ssh://me@vps.example.net:2222", "socks5://127.0.0.1:1080", "socks5h://u:p@h:1080", "http://proxy:3128", "https://proxy"} {
+		if _, err := ParseProxy(ok); err != nil {
+			t.Errorf("%s: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"vps", "ftp://vps", "ssh://me:pw@vps", "ssh://vps/path", "ssh://-oProxyCommand=x", "socks5://"} {
+		if _, err := ParseProxy(bad); err == nil {
+			t.Errorf("%s: expected an error", bad)
+		}
+	}
+}

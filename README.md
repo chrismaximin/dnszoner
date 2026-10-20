@@ -192,6 +192,7 @@ provider = "namecheap"
 api_user = "you"
 api_key = "…"
 client_ip = "203.0.113.7"
+proxy = "ssh://me@vps.example.net"   # optional: call from a server's fixed IP
 
 [[sources]]
 name = "Cloudflare"
@@ -240,7 +241,16 @@ subscription_id = "…"
 - **namecheap**: needs API access enabled and your IP whitelisted.
   `client_ip` is discovered automatically when omitted; set `api_endpoint` to
   use the sandbox. Calls are rate limited to stay under Namecheap's API
-  limits.
+  limits. If your IP changes, set `proxy` to make the calls from a server
+  with a fixed IP and whitelist that one instead:
+  `ssh://[user@]host[:port]` goes through any server you can ssh to (it
+  runs your `ssh`, so `~/.ssh/config` hosts, keys, the agent and
+  `known_hosts` apply; it never prompts, so passphrase keys need the
+  agent), and `socks5://`, `socks5h://` and `http(s)://` proxy URLs work
+  too. The connection to Namecheap is TLS from dnszoner itself, so the
+  server only relays encrypted traffic: the API key stays on your machine
+  and nothing needs installing there. `client_ip` is then discovered
+  through the proxy.
 - **cloudflare**: an API token with Zone › Zone › Read and Zone › DNS › Edit.
   Changes are made record by record, and only send the record's own fields,
   so proxying, comments and tags are kept. New records aren't proxied.

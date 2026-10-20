@@ -138,8 +138,6 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/libdns/libdns v1.1.1 h1:wPrHrXILoSHKWJKGd0EiAVmiJbFShguILTg9leS/P/U=
 github.com/libdns/libdns v1.1.1/go.mod h1:4Bj9+5CQiNMVGf87wjX4CY3HQJypUHRuLvlsfsZqLWQ=
-github.com/libdns/namecheap v1.0.0 h1:cZK8w4Y1AJQCtL5bjqnFpYBnI1k/mzJhljcKAP5vPd8=
-github.com/libdns/namecheap v1.0.0/go.mod h1:v57RUzOgOGVnI9wY3uqPEanSrKx2I1YgR24uep/ys9Y=
 github.com/libdns/ovh v1.1.0 h1:J909NRjU2IwRxvwwuvrHRomQ7lyetZdUISkqEhgmNYA=
 github.com/libdns/ovh v1.1.0/go.mod h1:NspcMQgmvCyHr4jhu+Zli/RQ86Vvt+jNtLzMMeOP8ag=
 github.com/libdns/route53 v1.6.2 h1:unPlpgC2InQ/xrql5NOwCmFS9vZrRx8lH1WUo8/rjk8=
