@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ type memAPI struct {
 	recs        []store.RecordData
 	sets, dels  int
 	failDeletes bool
+	failSets    bool
 }
 
 func (m *memAPI) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
@@ -30,7 +32,18 @@ func (m *memAPI) GetRecords(ctx context.Context, zone string) ([]libdns.Record, 
 
 func (m *memAPI) SetRecords(ctx context.Context, zone string, recs []libdns.Record) ([]libdns.Record, error) {
 	m.sets++
+	if m.failSets {
+		return nil, errors.New("boom")
+	}
 	in := fromLibdns(recs)
+	// Like Route53, refuse a CNAME sharing its name with other records.
+	for _, n := range in {
+		for _, r := range m.recs {
+			if r.Host == n.Host && r.Type != n.Type && (r.Type == "CNAME" || n.Type == "CNAME") {
+				return nil, fmt.Errorf("%s %s conflicts with other records with the same name", n.Type, n.Host)
+			}
+		}
+	}
 	m.recs = slices.DeleteFunc(m.recs, func(r store.RecordData) bool {
 		return slices.ContainsFunc(in, func(n store.RecordData) bool { return sameSet(r, n) })
 	})
@@ -134,5 +147,39 @@ func TestApplyLibdnsDeleteFailure(t *testing.T) {
 	}
 	if errs[1] != nil {
 		t.Errorf("in-place update should not be affected by the delete failure: %v", errs[1])
+	}
+}
+
+func TestApplyLibdnsCNAMESwap(t *testing.T) {
+	api := &memAPI{recs: []store.RecordData{
+		rec("A", "www", "1.1.1.1", 300),
+		rec("CNAME", "app", "www.example.com.", 300),
+		rec("A", "a", "1.1.1.1", 300),
+	}}
+	errs := applyLibdns(context.Background(), api, "example.com", []Change{
+		{Kind: store.PendingUpdate, Old: rec("A", "www", "1.1.1.1", 300), New: rec("CNAME", "www", "host.example.net.", 300)},
+		{Kind: store.PendingUpdate, Old: rec("CNAME", "app", "www.example.com.", 300), New: rec("A", "app", "2.2.2.2", 300)},
+		{Kind: store.PendingUpdate, Old: rec("A", "a", "1.1.1.1", 300), New: rec("A", "a2", "1.1.1.1", 300)},
+	})
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("change %d: %v", i, err)
+		}
+	}
+	want := strings.Join([]string{"A a2 1.1.1.1 5m0s", "A app 2.2.2.2 5m0s", "CNAME www host.example.net. 5m0s"}, "\n")
+	if got := api.dump(); got != want {
+		t.Errorf("zone after apply:\n%s\nwant:\n%s", got, want)
+	}
+	// The clashing sets go first; the renamed one after the write.
+	if api.dels != 2 || api.sets != 1 {
+		t.Errorf("got %d set and %d delete calls, want 1 and 2", api.sets, api.dels)
+	}
+
+	api = &memAPI{failSets: true, recs: []store.RecordData{rec("A", "www", "1.1.1.1", 300)}}
+	errs = applyLibdns(context.Background(), api, "example.com", []Change{
+		{Kind: store.PendingUpdate, Old: rec("A", "www", "1.1.1.1", 300), New: rec("CNAME", "www", "host.example.net.", 300)},
+	})
+	if errs[0] == nil || !strings.Contains(errs[0].Error(), "old record was removed") {
+		t.Errorf("failed write after delete: got %v", errs[0])
 	}
 }

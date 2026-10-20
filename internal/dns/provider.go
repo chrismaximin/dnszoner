@@ -106,9 +106,10 @@ func sameSet(a, b store.RecordData) bool {
 // applyLibdns applies a zone's changes with libdns semantics, where records
 // sharing a (host, type) form one set with one TTL. It re-reads the zone once,
 // computes the final content of every set the changes touch, and writes them
-// in one SetRecords call (one API change for Route53 and Namecheap), then
-// deletes the sets left empty. It returns one error per change: a change whose
-// old record is gone or changed fails with ErrConflict and is left out.
+// in one SetRecords call, then deletes the sets left empty (first, for a set
+// that would clash with a CNAME being written). It returns one error per
+// change: a change whose old record is gone or changed fails with ErrConflict
+// and is left out.
 func applyLibdns(ctx context.Context, api recordAPI, zone string, chs []Change) []error {
 	return applySets(ctx, libdnsSets{api, zone}, chs)
 }
@@ -230,20 +231,43 @@ func applySets(ctx context.Context, api setAPI, chs []Change) []error {
 		}
 	}
 
-	var set, del []store.RecordData
+	// A CNAME can't share its name with other records, and providers like
+	// Route53 refuse to write one that would: a set emptied to make room for
+	// a CNAME (or emptied of one) is deleted before the writes.
+	clashes := func(k setKey) bool {
+		return slices.ContainsFunc(touched, func(w setKey) bool {
+			return len(sets[w]) > 0 && w.host == k.host && w.typ != k.typ && (w.typ == "CNAME" || k.typ == "CNAME")
+		})
+	}
+	var set, delFirst, del []store.RecordData
+	deletedFirst := map[setKey]bool{}
 	emptied := map[setKey]bool{}
 	for _, k := range touched {
-		if len(sets[k]) == 0 {
+		switch {
+		case len(sets[k]) > 0:
+			set = append(set, sets[k]...)
+		case clashes(k):
+			deletedFirst[k] = true
+			delFirst = append(delFirst, orig[k]...)
+		default:
 			emptied[k] = true
 			del = append(del, orig[k]...)
-			continue
 		}
-		set = append(set, sets[k]...)
 	}
-	// Writing before deleting means a renamed record exists under its new
-	// name before the old one goes away.
+	if len(delFirst) > 0 {
+		if err := api.Delete(ctx, delFirst); err != nil {
+			return failAll(err)
+		}
+	}
+	// Otherwise writing before deleting means a renamed record exists under
+	// its new name before the old one goes away.
 	if len(set) > 0 {
 		if err := api.Set(ctx, set); err != nil {
+			for i, ch := range chs {
+				if errs[i] == nil && ch.Kind == store.PendingUpdate && deletedFirst[keyOf(ch.Old)] {
+					errs[i] = fmt.Errorf("the old record was removed but writing the new one failed: %w", err)
+				}
+			}
 			return failAll(err)
 		}
 	}
